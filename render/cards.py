@@ -217,7 +217,13 @@ if __name__ == "__main__":
     outdir = os.path.join(here, "..", "output", dstr)
     os.makedirs(outdir, exist_ok=True)
     render_logo(os.path.join(outdir, "00_logo.png"))
-    render_cover(p, os.path.join(outdir, "01_cover.png"), date)
+    import cover as premium_cover
+    used_pool = premium_cover.render_premium_cover(
+        date, date_odia(date), p["weekday_odia"],
+        os.path.join(outdir, "01_cover.png"))
+    if not used_pool:
+        render_cover(p, os.path.join(outdir, "01_cover.png"), date)
+    print("cover source:", "pool" if used_pool else "classic PIL fallback")
     for i, item in enumerate(content["rashifala"], start=2):
         render_rashi_card(p, ctxs[item["rashi"]], item, os.path.join(outdir, f"{i:02d}_{item['rashi'].lower()}.png"), date)
     print("rendered:", sorted(os.listdir(outdir)))
