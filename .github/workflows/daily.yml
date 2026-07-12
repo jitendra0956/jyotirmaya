@@ -13,6 +13,9 @@ on:
         required: true
         default: "generate"
 
+permissions:
+  contents: write
+
 jobs:
   daily:
     runs-on: ubuntu-latest
