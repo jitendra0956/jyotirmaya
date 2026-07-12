@@ -1,0 +1,91 @@
+name: jyotirmaya-daily
+
+on:
+  schedule:
+    # 21:00 IST (15:30 UTC) — generate tomorrow's cards, send for approval
+    - cron: "30 15 * * *"
+    # 05:30 IST (00:00 UTC) — publish approved carousel
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "generate | publish"
+        required: true
+        default: "generate"
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyswisseph pillow
+
+      - name: Determine mode and date
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ github.event.inputs.mode }}"
+          elif [ "$(date -u +%H)" = "15" ]; then
+            MODE="generate"
+          else
+            MODE="publish"
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          # generate runs for TOMORROW (IST), publish runs for TODAY (IST)
+          if [ "$MODE" = "generate" ]; then
+            echo "date=$(TZ=Asia/Kolkata date -d tomorrow +%F)" >> "$GITHUB_OUTPUT"
+          else
+            echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate content + render cards
+        if: steps.mode.outputs.mode == 'generate'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python engine/interpret.py ${{ steps.mode.outputs.date }}
+          python render/cards.py ${{ steps.mode.outputs.date }}
+
+      - name: Commit rendered cards (hosts them on GitHub Pages)
+        if: steps.mode.outputs.mode == 'generate'
+        run: |
+          git config user.name "jyotirmaya-bot"
+          git config user.email "bot@jyotirmaya"
+          git add output/
+          git commit -m "cards for ${{ steps.mode.outputs.date }}" || echo "nothing to commit"
+          git push
+
+      - name: Send approval preview to Telegram
+        if: steps.mode.outputs.mode == 'generate'
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          D=${{ steps.mode.outputs.date }}
+          curl -s -F chat_id=$TG_CHAT_ID \
+            -F photo=@output/$D/01_cover.png \
+            -F caption="Jyotirmaya $D — approve? Reply /skip before 5:30 AM to cancel." \
+            https://api.telegram.org/bot$TG_BOT_TOKEN/sendPhoto
+
+      - name: Publish to Instagram
+        if: steps.mode.outputs.mode == 'publish'
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IMAGE_BASE_URL: ${{ secrets.IMAGE_BASE_URL }}
+        run: python publish/instagram.py ${{ steps.mode.outputs.date }}
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -F chat_id=$TG_CHAT_ID \
+            -F text="⚠️ Jyotirmaya pipeline FAILED (${{ steps.mode.outputs.mode }}). Post manually today!" \
+            https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage
