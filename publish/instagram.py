@@ -21,6 +21,8 @@ def _post(url, params):
         raise RuntimeError(f"Graph API error {e.code} calling {url.split('?')[0]}: {err_body}") from e
 
 
+MAX_CAROUSEL = 10
+
 def publish_carousel(image_urls, caption):
     ig_user = os.environ["IG_USER_ID"].strip()
     token = os.environ["IG_ACCESS_TOKEN"].strip()
@@ -32,26 +34,59 @@ def publish_carousel(image_urls, caption):
           f"contains_newline={chr(10) in token or chr(13) in token}, "
           f"contains_quote={chr(34) in token or chr(39) in token}")
 
-    children = []
-    for u in image_urls:
-        res = _post(f"{GRAPH}/{ig_user}/media", {
-            "image_url": u, "is_carousel_item": "true", "access_token": token})
-        children.append(res["id"])
-        time.sleep(1)
+    if len(image_urls) <= MAX_CAROUSEL:
+        batches = [(image_urls, caption)]
+    else:
+        # cover (index 0) leads part 1; rest split evenly, each <=10
+        cover, rest = image_urls[0], image_urls[1:]
+        mid = (len(rest) + 1) // 2  # part1 gets the extra if odd
+        part1 = [cover] + rest[:mid]
+        part2 = rest[mid:]
+        batches = [
+            (part1, caption + "\n\n(1/2)"),
+            (part2, caption + "\n\n(2/2 — ଆପଣଙ୍କ ରାଶି ନ ମିଳିଲେ ଏଠାରେ ଦେଖନ୍ତୁ)"),
+        ]
 
-    carousel = _post(f"{GRAPH}/{ig_user}/media", {
-        "media_type": "CAROUSEL", "children": ",".join(children),
-        "caption": caption, "access_token": token})
+    published_ids = []
+    for urls, cap in batches:
+        children = []
+        for u in urls:
+            res = _post(f"{GRAPH}/{ig_user}/media", {
+                "image_url": u, "is_carousel_item": "true", "access_token": token})
+            children.append(res["id"])
+            time.sleep(1)
 
-    published = _post(f"{GRAPH}/{ig_user}/media_publish", {
-        "creation_id": carousel["id"], "access_token": token})
-    return published["id"]
+        carousel = _post(f"{GRAPH}/{ig_user}/media", {
+            "media_type": "CAROUSEL", "children": ",".join(children),
+            "caption": cap, "access_token": token})
+
+        published = _post(f"{GRAPH}/{ig_user}/media_publish", {
+            "creation_id": carousel["id"], "access_token": token})
+        published_ids.append(published["id"])
+        time.sleep(2)  # brief gap between the two posts
+    return published_ids
 
 
 def caption_for(date_str, weekday_odia):
     return (f"ଆଜିର ରାଶିଫଳ · {date_str} · {weekday_odia} 🌟\n"
             "ଆପଣଙ୍କ ରାଶି ଖୋଜନ୍ତୁ ଓ ପରିବାରକୁ ପଠାନ୍ତୁ 🙏\n\n"
             "#rashifala #odia #odisha #panjika #jyotish #ଓଡ଼ିଆ #jyotirmaya")
+
+
+MAX_CAROUSEL = 10
+
+def publish_in_batches(image_urls, base_caption):
+    """Instagram carousels allow max 10 items. Split into sequential posts,
+    always keeping the cover (first image) with the first batch."""
+    batches = [image_urls[i:i + MAX_CAROUSEL] for i in range(0, len(image_urls), MAX_CAROUSEL)]
+    ids = []
+    for idx, batch in enumerate(batches, start=1):
+        suffix = "" if len(batches) == 1 else f" ({idx}/{len(batches)})"
+        media_id = publish_carousel(batch, base_caption + suffix)
+        ids.append(media_id)
+        if idx < len(batches):
+            time.sleep(5)
+    return ids
 
 
 if __name__ == "__main__":
@@ -61,5 +96,5 @@ if __name__ == "__main__":
     files = sorted(f for f in os.listdir(outdir)
                    if f.endswith(".png") and not f.startswith("00_"))
     urls = [f"{base}/{dstr}/{f}" for f in files]
-    media_id = publish_carousel(urls, caption_for(dstr, ""))
-    print("published:", media_id)
+    media_ids = publish_in_batches(urls, caption_for(dstr, ""))
+    print("published:", media_ids)
