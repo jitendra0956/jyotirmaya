@@ -7,7 +7,7 @@ fallback/alert layer in the Actions workflow.
 """
 import json, os, sys, time, urllib.request, urllib.error, urllib.parse
 
-GRAPH = "https://graph.facebook.com/v21.0"
+GRAPH = "https://graph.instagram.com/v21.0"
 
 
 def _post(url, params):
