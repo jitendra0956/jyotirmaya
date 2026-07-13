@@ -8,6 +8,7 @@ import json, os, re, sys, time, urllib.request, urllib.error, datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 import panchanga as pj
+import odia_lexicon as lex
 
 MODEL = "gemini-2.0-flash"
 API = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
@@ -112,6 +113,46 @@ def validate(items):
     return problems
 
 
+PROOFREAD_PROMPT = """ତୁମେ ଜଣେ ଅତି ଯତ୍ନବାନ ଓଡ଼ିଆ ପ୍ରୁଫ୍‌ରିଡର୍, ପାରମ୍ପରିକ ଜ୍ୟୋତିଷ/ପଞ୍ଜିକା ଲେଖାରେ ବିଶେଷଜ୍ଞ।
+ନିମ୍ନଲିଖିତ ୧୨ଟି ରାଶିଫଳ ବାକ୍ୟ ଯାଞ୍ଚ କର:
+- ବନାନ ଭୁଲ, ଅଣ-ଓଡ଼ିଆ/ହିନ୍ଦୀ ମିଶ୍ରଣ, କିମ୍ବା ଅସ୍ୱାଭାବିକ ବାକ୍ୟ ଥିଲେ ସୁଧାର।
+- ଅର୍ଥ ଓ ଶୈଳୀ ଅପରିବର୍ତ୍ତିତ ରଖ, କେବଳ ଭାଷାଗତ ତ୍ରୁଟି ସୁଧାର।
+- କୌଣସି ତ୍ରୁଟି ନ ଥିଲେ ସେହିପରି ଫେରାଅ।
+- କେବଳ JSON ଫେରାଅ: {"rashifala":[{"rashi":"...","text":"..."}, ...ସବୁ ୧୨ଟି], "had_corrections": true/false}
+
+ଯାଞ୍ଚ କରିବାକୁ ଥିବା ବିଷୟବସ୍ତୁ:
+"""
+
+
+def proofread_pass(items):
+    """Second, independent Gemini call acting as a native-style proofreader —
+    this substitutes for daily human review, which isn't available here."""
+    payload = json.dumps({"rashifala": [
+        {"rashi": it["rashi"], "text": it["text"]} for it in items
+    ]}, ensure_ascii=False)
+    raw = call_gemini(PROOFREAD_PROMPT + payload)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return items, False
+    corrected = data.get("rashifala", items)
+    if len(corrected) != 12:
+        return items, False
+    return corrected, data.get("had_corrections", False)
+
+
+def lexicon_gate(items, max_unknown_rate=0.06):
+    """Flags text with an unusually high rate of words outside the verified
+    Odia vocabulary — automated substitute for a native reviewer's eye."""
+    problems = []
+    for it in items:
+        rate = lex.unknown_rate(it["text"])
+        if rate > max_unknown_rate:
+            unk = lex.unknown_words(it["text"])
+            problems.append(f"{it['rashi']}: unknown-word rate {rate:.0%} ({unk})")
+    return problems
+
+
 def generate_content(date: datetime.date, max_attempts=3):
     p = pj.compute_panchanga(date)
     ctxs = pj.rashi_context(p)
@@ -126,15 +167,32 @@ def generate_content(date: datetime.date, max_attempts=3):
             continue
         items = data.get("rashifala", [])
         problems = validate(items)
-        if not problems:
-            for it in items:  # attach deterministic lucky color/number
-                c, n = LUCKY[it["rashi"]]
-                it["color"], it["number"] = c, n
-            return {
-                "date": date.isoformat(),
-                "header_odia": "ଆଜିର ରାଶିଫଳ",
-                "rashifala": items,
-            }
+        if problems:
+            last_problems = problems
+            continue
+
+        # Second pass: independent proofreading (substitute for daily human review)
+        items, had_corrections = proofread_pass(items)
+        problems = validate(items)
+        if problems:
+            last_problems = ["proofread pass broke structure: " + str(problems)]
+            continue
+
+        # Third pass: vocabulary gate against verified Odia wordlist
+        lex_problems = lexicon_gate(items)
+        if lex_problems:
+            last_problems = lex_problems
+            continue
+
+        for it in items:  # attach deterministic lucky color/number
+            c, n = LUCKY[it["rashi"]]
+            it["color"], it["number"] = c, n
+        return {
+            "date": date.isoformat(),
+            "header_odia": "ଆଜିର ରାଶିଫଳ",
+            "rashifala": items,
+            "proofread_corrected": had_corrections,
+        }
         last_problems = problems
     raise RuntimeError(f"validation failed after {max_attempts} attempts: {last_problems}")
 

@@ -109,8 +109,27 @@ if __name__ == "__main__":
     dstr = sys.argv[1]
     base = os.environ["IMAGE_BASE_URL"].rstrip("/")
     outdir = os.path.join(os.path.dirname(__file__), "..", "output", dstr)
-    files = sorted(f for f in os.listdir(outdir)
-                   if f.endswith(".png") and not f.startswith("00_"))
-    urls = [f"{base}/{dstr}/{f}" for f in files]
-    media_ids = publish_in_batches(urls, caption_for(dstr, ""))
-    print("published:", media_ids)
+
+    rashi_files = sorted(f for f in os.listdir(outdir)
+                         if f.endswith(".png") and not f.startswith(("00_", "cover_")))
+    mid = (len(rashi_files) + 1) // 2
+    part1 = ["cover_part1.png"] + rashi_files[:mid]
+    part2 = ["cover_part2.png"] + rashi_files[mid:]
+
+    ig_user = os.environ["IG_USER_ID"].strip()
+    token = os.environ["IG_ACCESS_TOKEN"].strip()
+    print(f"[debug] IG_USER_ID='{ig_user}' (len={len(ig_user)})")
+    print(f"[debug] token length={len(token)}, starts='{token[:6]}...', "
+          f"ends='...{token[-4:]}'")
+
+    base_caption = caption_for(dstr, "")
+    ids = []
+    for idx, batch in enumerate([part1, part2], start=1):
+        urls = [f"{base}/{dstr}/{f}" for f in batch]
+        cap = base_caption + f"\n\n({idx}/2)"
+        media_id = publish_one_carousel(urls, cap, ig_user, token)
+        ids.append(media_id)
+        print(f"[debug] published part {idx}/2: {media_id}")
+        if idx == 1:
+            time.sleep(5)
+    print("published:", ids)

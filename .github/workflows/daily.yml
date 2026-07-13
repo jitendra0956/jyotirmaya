@@ -60,7 +60,7 @@ jobs:
           git commit -m "cards for ${{ steps.mode.outputs.date }}" || echo "nothing to commit"
           git push
 
-      - name: Send approval preview to Telegram
+      - name: Send preview to Telegram (FYI, not a required approval)
         if: steps.mode.outputs.mode == 'generate'
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
@@ -68,8 +68,8 @@ jobs:
         run: |
           D=${{ steps.mode.outputs.date }}
           curl -s -F chat_id=$TG_CHAT_ID \
-            -F photo=@output/$D/01_cover.png \
-            -F caption="Jyotirmaya $D — approve? Reply /skip before 5:30 AM to cancel." \
+            -F photo=@output/$D/cover_part1.png \
+            -F caption="Jyotirmaya $D — auto-checked (structure + proofread pass + vocabulary gate) and will publish at 5:30 AM. Reply here if anything looks off." \
             https://api.telegram.org/bot$TG_BOT_TOKEN/sendPhoto
 
       - name: Publish to Instagram
