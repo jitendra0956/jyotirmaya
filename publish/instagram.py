@@ -10,11 +10,20 @@ import json, os, sys, time, urllib.request, urllib.parse
 GRAPH = "https://graph.facebook.com/v21.0"
 
 
+import urllib.error
+
 def _post(url, params):
     data = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(url, data=data)
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.load(r)
+
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return json.load(r)
+
+    except urllib.error.HTTPError as e:
+        print("INSTAGRAM API ERROR:")
+        print(e.read().decode())
+        raise
 
 
 def publish_carousel(image_urls, caption):
