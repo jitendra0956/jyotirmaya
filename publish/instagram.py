@@ -110,8 +110,26 @@ if __name__ == "__main__":
     base = os.environ["IMAGE_BASE_URL"].rstrip("/")
     outdir = os.path.join(os.path.dirname(__file__), "..", "output", dstr)
 
-    rashi_files = sorted(f for f in os.listdir(outdir)
-                         if f.endswith(".png") and not f.startswith(("00_", "cover_")))
+    # Explicit whitelist by known rashi slugs — immune to stray leftover
+    # files (e.g. an old single-cover 01_cover.png from a prior design)
+    # that a prefix-exclusion filter could misclassify as a rashi card.
+    RASHI_SLUGS = ["mesha", "vrishabha", "mithuna", "karkata", "simha", "kanya",
+                   "tula", "vrischika", "dhanu", "makara", "kumbha", "meena"]
+    all_files = os.listdir(outdir)
+    rashi_files = []
+    for slug in RASHI_SLUGS:
+        matches = [f for f in all_files if f.lower().endswith(f"_{slug}.png")]
+        if len(matches) != 1:
+            raise RuntimeError(f"expected exactly 1 file for rashi '{slug}', found {matches}")
+        rashi_files.append(matches[0])
+
+    stray = [f for f in all_files if f.endswith(".png")
+             and f not in rashi_files
+             and f not in ("cover_part1.png", "cover_part2.png")
+             and not f.startswith("00_")]
+    if stray:
+        print(f"[warn] ignoring stray files not part of the expected set: {stray}")
+
     mid = (len(rashi_files) + 1) // 2
     part1 = ["cover_part1.png"] + rashi_files[:mid]
     part2 = ["cover_part2.png"] + rashi_files[mid:]

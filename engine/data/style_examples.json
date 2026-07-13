@@ -1,0 +1,9 @@
+{
+  "note": "Hand-curated few-shot style examples for the Gemini prompt. Kept separate from any single day's content so this can be maintained/upgraded independently as style guidance improves. Update this file (not a content_<date>.json) when refining word-choice rules.",
+  "rashifala": [
+    {"rashi": "Mesha", "text": "କାର୍ଯ୍ୟକ୍ଷେତ୍ରରେ ଆଜି ନୂଆ ସୁଯୋଗ ମିଳିବାର ସମ୍ଭାବନା ରହିଛି। ପ୍ରେମଜୀବନରେ ମଧୁର ମୁହୂର୍ତ୍ତ ଆସିପାରେ। ଆର୍ଥିକ ଦିଗରୁ ସାମାନ୍ୟ ସତର୍କତା ଆବଶ୍ୟକ।"},
+    {"rashi": "Vrishabha", "text": "ପାରିବାରିକ ପରିବେଶ ଆଜି ଆନନ୍ଦଦାୟକ ରହିବ। କାର୍ଯ୍ୟକ୍ଷେତ୍ରରେ ପୁରୁଣା ପ୍ରୟାସ ଫଳ ମିଳିବାର ସମ୍ଭାବନା ଦେଖାଯାଉଛି। ମନ ଶାନ୍ତ ଓ ସ୍ଥିର ରହିବ।"},
+    {"rashi": "Mithuna", "text": "ଅନାବଶ୍ୟକ ଖର୍ଚ୍ଚରୁ ଦୂରେଇ ରହିବା ଆଜି ଲାଭଦାୟକ ହେବ। ପ୍ରେମଜୀବନରେ ମତଭେଦ ହେଲେ ମଧ୍ୟ ଶୀଘ୍ର ମେଣ୍ଟିଯିବ। ବିଶ୍ରାମ ଓ ସ୍ୱାସ୍ଥ୍ୟ ପ୍ରତି ଧ୍ୟାନ ଦିଅନ୍ତୁ।"},
+    {"rashi": "Karkata", "text": "ଆୟର ନୂଆ ପଥ ଖୋଲିବାର ସୂଚନା ମିଳୁଛି। କାର୍ଯ୍ୟକ୍ଷେତ୍ରରେ ସହକର୍ମୀଙ୍କ ସହଯୋଗ ଫଳ ମିଳିବାର ସମ୍ଭାବନା ଆଣିଦେବ। ମନରେ ନୂଆ ଉତ୍ସାହ ରହିବ।"}
+  ]
+}
