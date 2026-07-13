@@ -5,30 +5,32 @@ Images must be publicly hosted (GitHub Pages) before publishing.
 Flow: item containers -> carousel container -> publish. Fails loudly for the
 fallback/alert layer in the Actions workflow.
 """
-import json, os, sys, time, urllib.request, urllib.parse
+import json, os, sys, time, urllib.request, urllib.error, urllib.parse
 
 GRAPH = "https://graph.facebook.com/v21.0"
 
 
-import urllib.error
-
 def _post(url, params):
     data = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(url, data=data)
-
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.load(r)
-
     except urllib.error.HTTPError as e:
-        print("INSTAGRAM API ERROR:")
-        print(e.read().decode())
-        raise
+        err_body = e.read().decode(errors="replace")
+        raise RuntimeError(f"Graph API error {e.code} calling {url.split('?')[0]}: {err_body}") from e
 
 
 def publish_carousel(image_urls, caption):
-    ig_user = os.environ["IG_USER_ID"]
-    token = os.environ["IG_ACCESS_TOKEN"]
+    ig_user = os.environ["IG_USER_ID"].strip()
+    token = os.environ["IG_ACCESS_TOKEN"].strip()
+
+    # Safe diagnostics — never print the full token
+    print(f"[debug] IG_USER_ID='{ig_user}' (len={len(ig_user)})")
+    print(f"[debug] token length={len(token)}, starts='{token[:6]}...', "
+          f"ends='...{token[-4:]}', contains_space={' ' in token}, "
+          f"contains_newline={chr(10) in token or chr(13) in token}, "
+          f"contains_quote={chr(34) in token or chr(39) in token}")
 
     children = []
     for u in image_urls:

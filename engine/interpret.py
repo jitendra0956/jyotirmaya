@@ -4,12 +4,12 @@ Code computes all facts (panchanga.py); this module only turns facts into
 traditional Odia prose via Gemini, then validates the output.
 Requires: GEMINI_API_KEY env var. Falls back with clear error for approval gate.
 """
-import json, os, re, sys, urllib.request, datetime
+import json, os, re, sys, time, urllib.request, urllib.error, datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 import panchanga as pj
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-2.0-flash"
 API = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
 LUCKY = {  # deterministic per rashi lord — code decides, not the LLM
@@ -61,7 +61,7 @@ def build_prompt(p, contexts):
             + "\n\nଏହି ତଥ୍ୟ ଅନୁସାରେ ଆଜିର 12 ରାଶିର ରାଶିଫଳ JSON ରେ ଲେଖ।")
 
 
-def call_gemini(prompt):
+def call_gemini(prompt, retries=4):
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise RuntimeError("GEMINI_API_KEY not set")
@@ -71,9 +71,20 @@ def call_gemini(prompt):
     }).encode()
     req = urllib.request.Request(f"{API}?key={key}", data=body,
                                  headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        out = json.load(r)
-    return out["candidates"][0]["content"]["parts"][0]["text"]
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                out = json.load(r)
+            return out["candidates"][0]["content"]["parts"][0]["text"]
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode(errors="replace")
+            if e.code == 429 and attempt < retries - 1:
+                wait = 15 * (attempt + 1)  # 15s, 30s, 45s...
+                print(f"429 rate limited, retrying in {wait}s... ({err_body[:300]})")
+                time.sleep(wait)
+                continue
+            raise RuntimeError(f"Gemini API error {e.code}: {err_body[:500]}") from e
+    raise RuntimeError("Gemini API: exhausted retries on 429")
 
 
 ODIA_RANGE = re.compile(r"[\u0B00-\u0B7F]")
