@@ -23,11 +23,22 @@ def _post(url, params):
         raise RuntimeError(f"Graph API error {e.code} calling {url.split('?')[0]}: {err_body}") from e
 
 
+def _get(url, params):
+    qs = urllib.parse.urlencode(params)
+    req = urllib.request.Request(f"{url}?{qs}")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode(errors="replace")
+        raise RuntimeError(f"Graph API error {e.code} calling {url.split('?')[0]}: {err_body}") from e
+
+
 def _wait_until_ready(container_id, token, timeout=90):
     """Poll a media container until Instagram finishes processing it."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        res = _post(f"{GRAPH}/{container_id}", {
+        res = _get(f"{GRAPH}/{container_id}", {
             "fields": "status_code", "access_token": token})
         status = res.get("status_code")
         print(f"[debug] container {container_id} status={status}")
