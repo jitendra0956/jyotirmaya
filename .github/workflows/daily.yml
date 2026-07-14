@@ -1,5 +1,8 @@
 name: jyotirmaya-daily
 
+permissions:
+  contents: write
+
 on:
   schedule:
     # 21:00 IST (15:30 UTC) — generate tomorrow's cards, send for approval
