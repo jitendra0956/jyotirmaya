@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import panchanga as pj
 import odia_lexicon as lex
 
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-2.5-flash"
 API = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
 LUCKY = {  # deterministic per rashi lord — code decides, not the LLM
