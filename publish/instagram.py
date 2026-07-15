@@ -34,8 +34,11 @@ def _get(url, params):
         raise RuntimeError(f"Graph API error {e.code} calling {url.split('?')[0]}: {err_body}") from e
 
 
-def _wait_until_ready(container_id, token, timeout=90):
-    """Poll a media container until Instagram finishes processing it."""
+def _wait_until_ready(container_id, token, timeout=90, poll_interval=10):
+    """Poll a media container until Instagram finishes processing it.
+    Polling less frequently (10s, not 3s) meaningfully cuts API calls per
+    run — likely the real driver of today's rate-limit hits, since two
+    carousels' worth of tight polling can burn ~40 calls each on its own."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         res = _get(f"{GRAPH}/{container_id}", {
@@ -46,7 +49,7 @@ def _wait_until_ready(container_id, token, timeout=90):
             return
         if status == "ERROR":
             raise RuntimeError(f"Container {container_id} failed processing: {res}")
-        time.sleep(3)
+        time.sleep(poll_interval)
     raise RuntimeError(f"Container {container_id} not ready after {timeout}s")
 
 
