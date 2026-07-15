@@ -178,12 +178,19 @@ def generate_content(date: datetime.date, max_attempts=3):
             last_problems = problems
             continue
 
-        # Second pass: independent proofreading (substitute for daily human review)
-        items, had_corrections = proofread_pass(items)
-        problems = validate(items)
-        if problems:
-            last_problems = ["proofread pass broke structure: " + str(problems)]
-            continue
+        # Second pass: independent proofreading (substitute for daily human review).
+        # Soft — if this call itself fails (network, exhausted rate-limit retries)
+        # or corrupts structure, fall back to the already-valid first-pass content
+        # (items, already validated above) rather than crashing generation.
+        had_corrections = False
+        try:
+            proofed_items, corrections_flag = proofread_pass(items)
+            if not validate(proofed_items):  # empty list = no problems = safe to use
+                items, had_corrections = proofed_items, corrections_flag
+            else:
+                print("[warn] proofread pass broke structure, keeping original first-pass content")
+        except Exception as e:
+            print(f"[warn] proofread pass failed ({e}), using unproofed first-pass content")
 
         # Third pass: vocabulary check against verified Odia wordlist — SOFT.
         # This heuristic has a real false-positive rate (agglutinative grammar,
@@ -220,5 +227,5 @@ if __name__ == "__main__":
     date = datetime.date.fromisoformat(dstr)
     content = generate_content(date)
     out = os.path.join(os.path.dirname(__file__), "..", "output", f"content_{dstr}.json")
-    json.dump(content, open(out, "w"), ensure_ascii=False, indent=2)
+    json.dump(content, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     print("content written:", out)

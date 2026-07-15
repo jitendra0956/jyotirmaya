@@ -310,15 +310,27 @@ def render_cover(p, out, date, part_label=None, rashi_names=None):
         ("ସୂର୍ଯ୍ୟାସ୍ତ", pj.odia_digits(p["sunset"])),
         ("ରାହୁ କାଳ", pj.odia_digits(p["rahu_kaal"]["start"] + " – " + p["rahu_kaal"]["end"])),
     ]
+    # Conditional extra rows — only appear on actual observance/Sankranti days
+    if p.get("is_ekadashi"):
+        rows.append(("ବ୍ରତ", "ଏକାଦଶୀ"))
+    elif p.get("is_purnima"):
+        rows.append(("ବ୍ରତ", "ପୂର୍ଣ୍ଣିମା"))
+    elif p.get("is_amavasya"):
+        rows.append(("ବ୍ରତ", "ଅମାବାସ୍ୟା"))
+    if p.get("sankranti_rashi"):
+        rows.append(("ସଂକ୍ରାନ୍ତି", p["sankranti_rashi"]["odia"] + " ରାଶିରେ"))
+
     fl = F(reg, 26); fv = F(bold, 30)
     y = 388 * S
+    target_end_y = (820 if rashi_names else 900) * S
+    row_h = (target_end_y - y) / len(rows)
     for lab, val in rows:
         d.ellipse([170*S, y+8*S, 178*S, y+16*S], fill=GOLD)
         d.text((190 * S, y), lab, font=fl, fill=MUTED)
         w = d.textlength(val, font=fv)
         d.text((SIZE - 190 * S - w, y - 4 * S), val, font=fv, fill=CREAM)
-        d.line([(190 * S, y + 58 * S), (SIZE - 190 * S, y + 58 * S)], fill=(58, 42, 92), width=1 * S)
-        y += 76 * S
+        d.line([(190 * S, y + row_h - 18*S), (SIZE - 190 * S, y + row_h - 18*S)], fill=(58, 42, 92), width=1 * S)
+        y += row_h
 
     if rashi_names:
         # "included in this post" block replacing the generic CTA
@@ -381,8 +393,15 @@ if __name__ == "__main__":
     os.makedirs(outdir, exist_ok=True)
     render_logo(os.path.join(outdir, "00_logo.png"))
 
-    rashi_order = [item["rashi"] for item in content["rashifala"]]
-    mid = (len(rashi_order) + 1) // 2  # matches publish_in_batches split exactly
+    import festival_greeting as fg
+    fg.render_greeting_slide(date, date_odia(date), os.path.join(outdir, "festival_greeting.png"))
+
+    # Use the SAME fixed canonical order as publish/instagram.py's RASHI_SLUGS
+    # grouping (not Gemini's JSON order) — guarantees the cover's "included in
+    # this post" list always matches which rashi files actually end up in
+    # each Instagram post, regardless of what order the model returned them in.
+    rashi_order = pj.RASHI_NAMES
+    mid = (len(rashi_order) + 1) // 2  # matches publish/instagram.py split exactly
     part1_names = [ctxs[r]["rashi_odia"] for r in rashi_order[:mid]]
     part2_names = [ctxs[r]["rashi_odia"] for r in rashi_order[mid:]]
 
@@ -392,6 +411,8 @@ if __name__ == "__main__":
                 part_label="ଭାଗ ୨", rashi_names=part2_names)
     print("covers: part1 ->", part1_names, "| part2 ->", part2_names)
 
-    for i, item in enumerate(content["rashifala"], start=2):
-        render_rashi_card(p, ctxs[item["rashi"]], item, os.path.join(outdir, f"{i:02d}_{item['rashi'].lower()}.png"), date)
+    items_by_rashi = {item["rashi"]: item for item in content["rashifala"]}
+    for i, rashi_name in enumerate(pj.RASHI_NAMES, start=2):
+        item = items_by_rashi[rashi_name]
+        render_rashi_card(p, ctxs[rashi_name], item, os.path.join(outdir, f"{i:02d}_{rashi_name.lower()}.png"), date)
     print("rendered:", sorted(os.listdir(outdir)))

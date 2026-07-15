@@ -105,8 +105,33 @@ def caption_for(date_str, weekday_odia):
             "#rashifala #odia #odisha #panjika #jyotish #ଓଡ଼ିଆ #jyotirmaya")
 
 
+def _marker_path(outdir):
+    return os.path.join(outdir, "published_parts.json")
+
+
+def _load_published(outdir):
+    path = _marker_path(outdir)
+    if os.path.exists(path):
+        return json.load(open(path, encoding="utf-8"))
+    return {}
+
+
+def _mark_published(outdir, part_num, media_id):
+    path = _marker_path(outdir)
+    data = _load_published(outdir)
+    data[str(part_num)] = {"media_id": media_id, "published": True}
+    json.dump(data, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    # Commit immediately so this survives even if a later part fails —
+    # the NEXT run (manual or scheduled cron) will see this and skip it.
+    os.system('git config user.name "jyotirmaya-bot" 2>/dev/null')
+    os.system('git config user.email "bot@jyotirmaya" 2>/dev/null')
+    os.system(f'git add "{path}" && git commit -m "mark part {part_num} published for {os.path.basename(outdir)}" '
+              f'&& git push 2>&1 || echo "[warn] could not commit publish marker"')
+
+
 if __name__ == "__main__":
     dstr = sys.argv[1]
+    only_part = sys.argv[2] if len(sys.argv) > 2 else "both"  # "1", "2", or "both"
     base = os.environ["IMAGE_BASE_URL"].rstrip("/")
     outdir = os.path.join(os.path.dirname(__file__), "..", "output", dstr)
 
@@ -125,7 +150,7 @@ if __name__ == "__main__":
 
     stray = [f for f in all_files if f.endswith(".png")
              and f not in rashi_files
-             and f not in ("cover_part1.png", "cover_part2.png")
+             and f not in ("cover_part1.png", "cover_part2.png", "festival_greeting.png")
              and not f.startswith("00_")]
     if stray:
         print(f"[warn] ignoring stray files not part of the expected set: {stray}")
@@ -134,6 +159,10 @@ if __name__ == "__main__":
     part1 = ["cover_part1.png"] + rashi_files[:mid]
     part2 = ["cover_part2.png"] + rashi_files[mid:]
 
+    if "festival_greeting.png" in all_files:
+        part1 = ["festival_greeting.png"] + part1
+        print("[info] festival greeting slide included at front of Part 1")
+
     ig_user = os.environ["IG_USER_ID"].strip()
     token = os.environ["IG_ACCESS_TOKEN"].strip()
     print(f"[debug] IG_USER_ID='{ig_user}' (len={len(ig_user)})")
@@ -141,13 +170,21 @@ if __name__ == "__main__":
           f"ends='...{token[-4:]}'")
 
     base_caption = caption_for(dstr, "")
+    already = _load_published(outdir)
     ids = []
     for idx, batch in enumerate([part1, part2], start=1):
+        if str(idx) in already and already[str(idx)].get("published"):
+            print(f"[info] part {idx}/2 already published (media_id={already[str(idx)]['media_id']}) — skipping to avoid duplicate")
+            continue
+        if only_part not in ("both", str(idx)):
+            print(f"[info] skipping part {idx}/2 (only_part={only_part})")
+            continue
         urls = [f"{base}/{dstr}/{f}" for f in batch]
         cap = base_caption + f"\n\n({idx}/2)"
         media_id = publish_one_carousel(urls, cap, ig_user, token)
         ids.append(media_id)
         print(f"[debug] published part {idx}/2: {media_id}")
-        if idx == 1:
+        _mark_published(outdir, idx, media_id)
+        if idx == 1 and only_part == "both":
             time.sleep(5)
     print("published:", ids)

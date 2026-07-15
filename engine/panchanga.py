@@ -6,6 +6,7 @@ Lahiri ayanamsa, Bhubaneswar as reference location, IST output.
 import swisseph as swe
 import datetime
 import json
+import os
 
 LAT, LON, ALT = 20.2961, 85.8245, 30
 IST = 5.5
@@ -124,12 +125,35 @@ def compute_panchanga(date: datetime.date) -> dict:
             "rashi_odia": RASHI_ODIA[int(lon_p / 30)],
         }
 
-    return {
+    # Ekadashi: tithi index 10 (Shukla) or 25 (Krishna) — deterministic, no lookup needed
+    is_ekadashi = tithi_idx in (10, 25)
+    # Purnima (full moon, index 14) and Amavasya (new moon, index 29) — same idea
+    is_purnima = tithi_idx == 14
+    is_amavasya = tithi_idx == 29
+
+    # Sankranti: the civil day (IST midnight-to-midnight) during which the sun's
+    # sidereal longitude crosses a 30-degree (rashi) boundary. Comparing this
+    # day's own midnight to the *next* day's midnight matches traditional
+    # civil-date convention (verified against real Makar Sankranti = 14 Jan 2026;
+    # a sunrise-to-sunrise comparison gets this off by one day).
+    jd_day_start = swe.julday(date.year, date.month, date.day, 0.0) - IST / 24.0
+    jd_day_end = jd_day_start + 1.0
+    sun_start = sidereal_lon(jd_day_start, swe.SUN)
+    sun_end = sidereal_lon(jd_day_end, swe.SUN)
+    sankranti_rashi = None
+    if int(sun_start / 30) != int(sun_end / 30):
+        sankranti_rashi = {"name": RASHI_NAMES[int(sun_end / 30)], "odia": RASHI_ODIA[int(sun_end / 30)]}
+
+    result = {
         "date": date.isoformat(),
         "weekday_odia": WEEKDAY_ODIA[weekday],
         "location": "Bhubaneswar",
         "sunrise": _to_ist_hm(jd_rise),
         "sunset": _to_ist_hm(jd_set),
+        "is_ekadashi": is_ekadashi,
+        "is_purnima": is_purnima,
+        "is_amavasya": is_amavasya,
+        "sankranti_rashi": sankranti_rashi,
         "tithi": {
             "name": TITHI_NAMES[tithi_idx],
             "odia": f"{paksha_odia} {TITHI_ODIA[tithi_idx]}",
@@ -149,6 +173,22 @@ def compute_panchanga(date: datetime.date) -> dict:
                       "end": _to_ist_hm(rahu_end)},
         "planets": planet_positions,
     }
+
+    # Physical panjika overrides always win over our ephemeris calculation
+    override_path = os.path.join(os.path.dirname(__file__), "..", "assets",
+                                 "festivals", f"panjika_overrides_{date.year}.json")
+    if os.path.exists(override_path):
+        overrides = json.load(open(override_path, encoding="utf-8"))
+        entry = overrides.get(date.isoformat())
+        if entry:
+            if "is_ekadashi" in entry:
+                result["is_ekadashi"] = entry["is_ekadashi"]
+            if "sankranti_rashi" in entry:
+                result["sankranti_rashi"] = entry["sankranti_rashi"]
+            if "tithi_odia" in entry:
+                result["tithi"]["odia"] = entry["tithi_odia"]
+
+    return result
 
 
 def rashi_context(panchanga: dict) -> list:

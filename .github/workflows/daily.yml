@@ -1,6 +1,8 @@
 name: jyotirmaya-daily
+
 permissions:
   contents: write
+
 on:
   schedule:
     # 21:00 IST (15:30 UTC) — generate tomorrow's cards, send for approval
@@ -10,22 +12,30 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "generate | publish"
+        description: "generate | publish | exchange_token"
         required: true
         default: "generate"
       date:
         description: "Date to use, YYYY-MM-DD (leave empty for automatic today/tomorrow)"
         required: false
         default: ""
+      part:
+        description: "1, 2, or both — use 1/2 only to recover a partial publish failure without duplicating the other half"
+        required: false
+        default: "both"
+
 jobs:
   daily:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - run: pip install pyswisseph pillow
+
       - name: Determine mode and date
         id: mode
         run: |
@@ -46,6 +56,14 @@ jobs:
           else
             echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Exchange token (manual only)
+        if: steps.mode.outputs.mode == 'exchange_token'
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_APP_SECRET: ${{ secrets.IG_APP_SECRET }}
+        run: python engine/exchange_token.py
+
       - name: Generate content + render cards
         if: steps.mode.outputs.mode == 'generate'
         env:
@@ -53,6 +71,7 @@ jobs:
         run: |
           python engine/interpret.py ${{ steps.mode.outputs.date }}
           python render/cards.py ${{ steps.mode.outputs.date }}
+
       - name: Commit rendered cards (hosts them on GitHub Pages)
         if: steps.mode.outputs.mode == 'generate'
         run: |
@@ -61,6 +80,7 @@ jobs:
           git add output/
           git commit -m "cards for ${{ steps.mode.outputs.date }}" || echo "nothing to commit"
           git push
+
       - name: Send preview to Telegram (FYI, not a required approval)
         if: steps.mode.outputs.mode == 'generate'
         env:
@@ -72,13 +92,15 @@ jobs:
             -F photo=@output/$D/cover_part1.png \
             -F caption="Jyotirmaya $D — auto-checked (structure + proofread pass + vocabulary gate) and will publish at 5:30 AM. Reply here if anything looks off." \
             https://api.telegram.org/bot$TG_BOT_TOKEN/sendPhoto
+
       - name: Publish to Instagram
         if: steps.mode.outputs.mode == 'publish'
         env:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           IMAGE_BASE_URL: ${{ secrets.IMAGE_BASE_URL }}
-        run: python publish/instagram.py ${{ steps.mode.outputs.date }}
+        run: python publish/instagram.py ${{ steps.mode.outputs.date }} ${{ github.event.inputs.part || 'both' }}
+
       - name: Alert on failure
         if: failure()
         env:

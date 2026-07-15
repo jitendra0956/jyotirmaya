@@ -1,0 +1,5 @@
+{
+  "_note": "Overrides our ephemeris (pyswisseph/Lahiri) calculation with the physical Kohinoor Panjika whenever they disagree. Add entries here whenever you spot a mismatch against your physical copy — this file always wins over the engine's own math. tithi_odia is included so the displayed tithi row stays consistent with the overridden flag (avoids a card showing 'Dashami' next to an 'Ekadashi vrata' badge).",
+  "2026-06-24": {"is_ekadashi": true, "tithi_odia": "ଶୁକ୍ଳ ଏକାଦଶୀ", "reason": "Kohinoor Panjika shows Nirjala Ekadashi on 24th; our engine computed 25th"},
+  "2026-06-25": {"is_ekadashi": false, "tithi_odia": "ଶୁକ୍ଳ ଦ୍ୱାଦଶୀ", "reason": "corrected by override above"}
+}
