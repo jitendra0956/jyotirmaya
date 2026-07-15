@@ -108,6 +108,27 @@ def caption_for(date_str, weekday_odia):
             "#rashifala #odia #odisha #panjika #jyotish #ଓଡ଼ିଆ #jyotirmaya")
 
 
+def already_posted_on_instagram(ig_user, token, dstr, part_num):
+    """Ground-truth check: ask Instagram itself whether today's part has
+    already been posted, rather than trusting our own script's memory of
+    success/failure — tonight proved that memory can be wrong (Instagram
+    completes the post server-side even when our own HTTP call reports
+    an error). Looks at the last 10 posts' captions for this date+part."""
+    try:
+        res = _get(f"{GRAPH}/{ig_user}/media", {
+            "fields": "caption,timestamp", "limit": "10", "access_token": token})
+        marker = f"{dstr}" 
+        part_marker = f"({part_num}/2)"
+        for item in res.get("data", []):
+            cap = item.get("caption") or ""
+            if marker in cap and part_marker in cap:
+                return True
+        return False
+    except Exception as e:
+        print(f"[warn] could not check Instagram's existing posts ({e}) — proceeding normally")
+        return False
+
+
 def _marker_path(outdir):
     return os.path.join(outdir, "published_parts.json")
 
@@ -177,7 +198,12 @@ if __name__ == "__main__":
     ids = []
     for idx, batch in enumerate([part1, part2], start=1):
         if str(idx) in already and already[str(idx)].get("published"):
-            print(f"[info] part {idx}/2 already published (media_id={already[str(idx)]['media_id']}) — skipping to avoid duplicate")
+            print(f"[info] part {idx}/2 already published per local marker — skipping")
+            continue
+        if already_posted_on_instagram(ig_user, token, dstr, idx):
+            print(f"[info] part {idx}/2 already found live on Instagram (ground-truth check) — "
+                  f"skipping and writing marker now so this stays remembered")
+            _mark_published(outdir, idx, "found_via_ground_truth_check")
             continue
         if only_part not in ("both", str(idx)):
             print(f"[info] skipping part {idx}/2 (only_part={only_part})")
