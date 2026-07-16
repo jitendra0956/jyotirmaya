@@ -2,5 +2,9 @@
   "1": {
     "media_id": "found_via_ground_truth_check",
     "published": true
+  },
+  "2": {
+    "media_id": "found_via_ground_truth_check",
+    "published": true
   }
 }
