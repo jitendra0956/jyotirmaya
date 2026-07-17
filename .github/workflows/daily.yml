@@ -7,8 +7,10 @@ on:
   schedule:
     # 21:00 IST (15:30 UTC) — generate tomorrow's cards, send for approval
     - cron: "30 15 * * *"
-    # 05:30 IST (00:00 UTC) — publish approved carousel
+    # 05:30 IST (00:00 UTC) — publish Part 1 only
     - cron: "0 0 * * *"
+    # 06:00 IST (00:30 UTC) — publish Part 2 only, 30 min later, separate run
+    - cron: "30 0 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -36,17 +38,28 @@ jobs:
 
       - run: pip install pyswisseph pillow
 
-      - name: Determine mode and date
+      - name: Determine mode, date, and part
         id: mode
         run: |
+          SCHEDULE="${{ github.event.schedule }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             MODE="${{ github.event.inputs.mode }}"
-          elif [ "$(date -u +%H)" = "15" ]; then
+            PART="${{ github.event.inputs.part }}"
+          elif [ "$SCHEDULE" = "30 15 * * *" ]; then
             MODE="generate"
+            PART="both"
+          elif [ "$SCHEDULE" = "0 0 * * *" ]; then
+            MODE="publish"
+            PART="1"
+          elif [ "$SCHEDULE" = "30 0 * * *" ]; then
+            MODE="publish"
+            PART="2"
           else
             MODE="publish"
+            PART="both"
           fi
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "part=$PART" >> "$GITHUB_OUTPUT"
 
           MANUAL_DATE="${{ github.event.inputs.date }}"
           if [ -n "$MANUAL_DATE" ]; then
@@ -90,7 +103,7 @@ jobs:
           D=${{ steps.mode.outputs.date }}
           curl -s -F chat_id=$TG_CHAT_ID \
             -F photo=@output/$D/cover_part1.png \
-            -F caption="Jyotirmaya $D — auto-checked (structure + proofread pass + vocabulary gate) and will publish at 5:30 AM. Reply here if anything looks off." \
+            -F caption="Jyotirmaya $D — auto-checked (structure + proofread pass + vocabulary gate). Part 1 publishes 5:30 AM, Part 2 at 6:00 AM." \
             https://api.telegram.org/bot$TG_BOT_TOKEN/sendPhoto
 
       - name: Publish to Instagram
@@ -99,7 +112,7 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           IMAGE_BASE_URL: ${{ secrets.IMAGE_BASE_URL }}
-        run: python publish/instagram.py ${{ steps.mode.outputs.date }} ${{ github.event.inputs.part || 'both' }}
+        run: python publish/instagram.py ${{ steps.mode.outputs.date }} ${{ steps.mode.outputs.part }}
 
       - name: Alert on failure
         if: failure()
@@ -108,5 +121,5 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -F chat_id=$TG_CHAT_ID \
-            -F text="⚠️ Jyotirmaya pipeline FAILED (${{ steps.mode.outputs.mode }}). Post manually today!" \
+            -F text="⚠️ Jyotirmaya pipeline FAILED (${{ steps.mode.outputs.mode }} part ${{ steps.mode.outputs.part }}). Post manually today!" \
             https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage

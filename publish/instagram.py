@@ -116,8 +116,8 @@ def already_posted_on_instagram(ig_user, token, dstr, part_num):
     an error). Looks at the last 10 posts' captions for this date+part."""
     try:
         res = _get(f"{GRAPH}/{ig_user}/media", {
-            "fields": "caption,timestamp", "limit": "10", "access_token": token})
-        marker = f"{dstr}" 
+            "fields": "caption,timestamp", "limit": "15", "access_token": token})
+        marker = dstr
         part_marker = f"({part_num}/2)"
         for item in res.get("data", []):
             cap = item.get("caption") or ""
