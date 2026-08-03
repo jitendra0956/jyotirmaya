@@ -416,3 +416,59 @@ if __name__ == "__main__":
         item = items_by_rashi[rashi_name]
         render_rashi_card(p, ctxs[rashi_name], item, os.path.join(outdir, f"{i:02d}_{rashi_name.lower()}.png"), date)
     print("rendered:", sorted(os.listdir(outdir)))
+
+
+def render_festival_calendar_card(events, start_date, out):
+    """Weekly Friday post — upcoming festivals & Vrat for the next 7 days.
+    events: list of {date, name_odia, type} from engine/festival_calendar.py.
+    Tested against real computed data (1-event, 2-event, and 0-event real
+    weeks) before being wired into this reusable function."""
+    img, d = base_canvas(GOLD)
+    reg, bold, black = "NotoSansOriya-Regular.ttf", "NotoSansOriya-Bold.ttf", "NotoSansOriya-Black.ttf"
+
+    hdr = "ଆଗାମୀ ସପ୍ତାହର ପର୍ବ ଓ ବ୍ରତ"
+    f = F(bold, 34)
+    w = d.textlength(hdr, font=f)
+    d.text(((SIZE - w) / 2, 90 * S), hdr, font=f, fill=GOLD)
+
+    sub = date_odia(start_date) + " ଠାରୁ ୭ ଦିନ"
+    f2 = F(reg, 22)
+    w = d.textlength(sub, font=f2)
+    d.text(((SIZE - w) / 2, 148 * S), sub, font=f2, fill=MUTED)
+
+    if not events:
+        msg = "ଏହି ସପ୍ତାହରେ କୌଣସି ପ୍ରମୁଖ ପର୍ବ କିମ୍ବା ବ୍ରତ ନାହିଁ"
+        f3 = F(reg, 28)
+        w = d.textlength(msg, font=f3)
+        d.text(((SIZE - w) / 2, SIZE // 2 - 20 * S), msg, font=f3, fill=TEXT)
+    else:
+        card_w = 820 * S
+        x = (SIZE - card_w) / 2
+        row_h = 130 * S
+        start_y = 260 * S
+        f_date = F(black, 34)
+        f_name = F(bold, 32)
+        f_type = F(reg, 20)
+        month_names = ["", "ଜାନୁ", "ଫେବୃ", "ମାର୍ଚ୍ଚ", "ଏପ୍ରି", "ମେ", "ଜୁନ",
+                      "ଜୁଲା", "ଅଗ", "ସେପ୍ଟ", "ଅକ୍ଟୋ", "ନଭେ", "ଡିସେ"]
+        for i, e in enumerate(events):
+            y = start_y + i * (row_h + 20 * S)
+            d.rounded_rectangle([x, y, x + card_w, y + row_h], radius=18 * S, fill=BG2, outline=GOLD, width=2 * S)
+            badge_w = 160 * S
+            d.rounded_rectangle([x + 16 * S, y + 16 * S, x + 16 * S + badge_w, y + row_h - 16 * S],
+                                radius=12 * S, fill=(26, 15, 46), outline=GOLD_LIGHT, width=1 * S)
+            day_str = str(e["date"].day)
+            month_str = month_names[e["date"].month]
+            dw = d.textlength(day_str, font=f_date)
+            d.text((x + 16 * S + (badge_w - dw) / 2, y + 24 * S), day_str, font=f_date, fill=GOLD_LIGHT)
+            mw = d.textlength(month_str, font=f_type)
+            d.text((x + 16 * S + (badge_w - mw) / 2, y + 68 * S), month_str, font=f_type, fill=MUTED)
+            tx = x + 16 * S + badge_w + 30 * S
+            d.text((tx, y + 30 * S), e["name_odia"], font=f_name, fill=CREAM)
+            type_label = "ପର୍ବ" if e["type"] == "festival" else "ବ୍ରତ"
+            d.text((tx, y + 72 * S), type_label, font=f_type, fill=MUTED)
+
+    draw_footer(d)
+    img = img.resize((1080, 1080), Image.LANCZOS)
+    img.save(out, quality=95)
+    return out
