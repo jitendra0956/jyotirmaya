@@ -175,7 +175,7 @@ def caption_for(date_str, weekday_odia):
             "#rashifala #odia #odisha #panjika #jyotish #ଓଡ଼ିଆ #jyotirmaya")
 
 
-def already_posted_on_instagram(ig_user, token, dstr, part_num):
+def already_posted_on_instagram(ig_user, token, dstr):
     """Ground-truth check: ask Instagram itself whether today's part has
     already been posted, rather than trusting our own script's memory of
     success/failure — tonight proved that memory can be wrong (Instagram
@@ -185,10 +185,9 @@ def already_posted_on_instagram(ig_user, token, dstr, part_num):
         res = _get(f"{GRAPH}/{ig_user}/media", {
             "fields": "caption,timestamp", "limit": "15", "access_token": token})
         marker = dstr
-        part_marker = f"({part_num}/2)"
         for item in res.get("data", []):
             cap = item.get("caption") or ""
-            if marker in cap and part_marker in cap:
+            if marker in cap:
                 return True
         return False
     except Exception as e:
@@ -222,36 +221,26 @@ def _mark_published(outdir, part_num, media_id):
 
 if __name__ == "__main__":
     dstr = sys.argv[1]
-    only_part = sys.argv[2] if len(sys.argv) > 2 else "both"  # "1", "2", or "both"
     outdir = os.path.join(os.path.dirname(__file__), "..", "output", dstr)
-
-    # Explicit whitelist by known rashi slugs — immune to stray leftover
-    # files (e.g. an old single-cover 01_cover.png from a prior design)
-    # that a prefix-exclusion filter could misclassify as a rashi card.
-    RASHI_SLUGS = ["mesha", "vrishabha", "mithuna", "karkata", "simha", "kanya",
-                   "tula", "vrischika", "dhanu", "makara", "kumbha", "meena"]
     all_files = os.listdir(outdir)
-    rashi_files = []
-    for slug in RASHI_SLUGS:
-        matches = [f for f in all_files if f.lower().endswith(f"_{slug}.png")]
-        if len(matches) != 1:
-            raise RuntimeError(f"expected exactly 1 file for rashi '{slug}', found {matches}")
-        rashi_files.append(matches[0])
 
-    stray = [f for f in all_files if f.endswith(".png")
-             and f not in rashi_files
-             and f not in ("cover_part1.png", "cover_part2.png", "festival_greeting.png")
-             and not f.startswith("00_")]
+    # Explicit expected file list for the new Do/Dont grid design — one
+    # single carousel now (only ~6 images, well under Instagram's 10-item
+    # limit), no more Part1/Part2 split needed.
+    expected = ["cover.png", "01_do_page1.png", "01_do_page2.png",
+                "03_dont_page1.png", "03_dont_page2.png"]
+    missing = [f for f in expected if f not in all_files]
+    if missing:
+        raise RuntimeError(f"expected files missing from {outdir}: {missing}")
+
+    batch = list(expected)
+    if "festival_greeting.png" in all_files:
+        batch = ["festival_greeting.png"] + batch
+        print("[info] festival greeting slide included at front")
+
+    stray = [f for f in all_files if f.endswith(".png") and f not in batch and not f.startswith("00_")]
     if stray:
         print(f"[warn] ignoring stray files not part of the expected set: {stray}")
-
-    mid = (len(rashi_files) + 1) // 2
-    part1 = ["cover_part1.png"] + rashi_files[:mid]
-    part2 = ["cover_part2.png"] + rashi_files[mid:]
-
-    if "festival_greeting.png" in all_files:
-        part1 = ["festival_greeting.png"] + part1
-        print("[info] festival greeting slide included at front of Part 1")
 
     ig_user = os.environ["IG_USER_ID"].strip()
     token = os.environ["IG_ACCESS_TOKEN"].strip()
@@ -261,29 +250,19 @@ if __name__ == "__main__":
 
     base_caption = caption_for(dstr, "")
     already = _load_published(outdir)
-    ids = []
-    for idx, batch in enumerate([part1, part2], start=1):
-        if str(idx) in already and already[str(idx)].get("published"):
-            print(f"[info] part {idx}/2 already published per local marker — skipping")
-            continue
-        if already_posted_on_instagram(ig_user, token, dstr, idx):
-            print(f"[info] part {idx}/2 already found live on Instagram (ground-truth check) — "
-                  f"skipping and writing marker now so this stays remembered")
-            _mark_published(outdir, idx, "found_via_ground_truth_check")
-            continue
-        if only_part not in ("both", str(idx)):
-            print(f"[info] skipping part {idx}/2 (only_part={only_part})")
-            continue
-        print(f"[debug] uploading {len(batch)} files for part {idx}/2 to Cloudinary...")
-        urls = [
-            upload_to_cloudinary(os.path.join(outdir, f), public_id=f"jyotirmaya/{dstr}/{os.path.splitext(f)[0]}")
-            for f in batch
-        ]
-        cap = base_caption + f"\n\n({idx}/2)"
-        media_id = publish_one_carousel(urls, cap, ig_user, token)
-        ids.append(media_id)
-        print(f"[debug] published part {idx}/2: {media_id}")
-        _mark_published(outdir, idx, media_id)
-        if idx == 1 and only_part == "both":
-            time.sleep(5)
-    print("published:", ids)
+    if already.get("1", {}).get("published"):
+        print("[info] already published per local marker — skipping")
+        sys.exit(0)
+    if already_posted_on_instagram(ig_user, token, dstr):
+        print("[info] already found live on Instagram (ground-truth check) — skipping, writing marker now")
+        _mark_published(outdir, 1, "found_via_ground_truth_check")
+        sys.exit(0)
+
+    print(f"[debug] uploading {len(batch)} files to Cloudinary...")
+    urls = [
+        upload_to_cloudinary(os.path.join(outdir, f), public_id=f"jyotirmaya/{dstr}/{os.path.splitext(f)[0]}")
+        for f in batch
+    ]
+    media_id = publish_one_carousel(urls, base_caption, ig_user, token)
+    print(f"[debug] published: {media_id}")
+    _mark_published(outdir, 1, media_id)

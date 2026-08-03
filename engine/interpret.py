@@ -44,10 +44,13 @@ SYSTEM_RULES = """ତୁମେ ଏକ ଅଭିଜ୍ଞ ଓଡ଼ିଆ ପଞ�
 1. କେବଳ ମାର୍ଗଦର୍ଶନ ଭାଷା — "ମିଳିପାରେ", "ସମ୍ଭାବନା", "ସୂଚନା", "ହିତକର"। କଦାପି ନିଶ୍ଚିତ ଭବିଷ୍ୟବାଣୀ ନୁହେଁ।
 2. ଭୟ ସୃଷ୍ଟିକାରୀ କଥା ନିଷେଧ — ମୃତ୍ୟୁ, ଗୁରୁତର ରୋଗ, ଦୁର୍ଘଟଣା, ବିବାହବିଚ୍ଛେଦ ଉଲ୍ଲେଖ କର ନାହିଁ।
 3. ସ୍ୱାସ୍ଥ୍ୟ ବିଷୟରେ କେବଳ "ସ୍ୱାସ୍ଥ୍ୟ ପ୍ରତି ଧ୍ୟାନ ଦିଅନ୍ତୁ" ପରି ସାଧାରଣ କଥା।
-4. ପ୍ରତି ରାଶି ପାଇଁ ଠିକ୍ 3ଟି ଛୋଟ ବାକ୍ୟ — କର୍ମ/ଅର୍ଥ, ପରିବାର/ସମ୍ପର୍କ, ଏବଂ ଗୋଟିଏ ପରାମର୍ଶ।
+4. ପ୍ରତି ରାଶି ପାଇଁ ଦୁଇଟି ପୂର୍ଣ୍ଣ, ସମ୍ପୂର୍ଣ୍ଣ ବାକ୍ୟ ଲେଖ (ଖଣ୍ଡ ବାକ୍ୟାଂଶ ନୁହେଁ):
+   - "do": ଆଜି କଣ କରିବା ଉଚିତ୍ (କାର୍ଯ୍ୟ/ଅର୍ଥ/ପରିବାର ମଧ୍ୟରୁ ଗୋଟିଏ ପ୍ରସଙ୍ଗ ଚୟନ କରି)
+   - "dont": ଆଜି କଣ ଏଡ଼ାଇବା ଉଚିତ୍
+   ଉଭୟ ପୂର୍ଣ୍ଣ ମନେ ହେବା ଉଚିତ୍ — ଉଦାହରଣ ଶୈଳୀ: "ନୂଆ କାର୍ଯ୍ୟ ଆରମ୍ଭ କରିବା ପାଇଁ ଆଜି ଉତ୍ତମ ଦିନ, ସାହସର ସହ ଆଗକୁ ବଢ଼ନ୍ତୁ" — ଏକ ଛୋଟ ଖଣ୍ଡବାକ୍ୟ ନୁହେଁ, ଏକ ସମ୍ପୂର୍ଣ୍ଣ, ପ୍ରବାହମୟ ବାକ୍ୟ।
 5. ଶୁଦ୍ଧ, ସ୍ୱାଭାବିକ ଓଡ଼ିଆ — ହିନ୍ଦୀ ମିଶ୍ରଣ ନାହିଁ।
 6. transit_tone "favourable" ହେଲେ ସକାରାତ୍ମକ ସ୍ୱର, "mixed" ହେଲେ ସନ୍ତୁଳିତ ସାବଧାନ ସ୍ୱର।
-7. ଉତ୍ତର କେବଳ JSON: {"rashifala":[{"rashi":"Mesha","text":"..."}, ... ସବୁ 12ଟି]}"""
+7. ଉତ୍ତର କେବଳ JSON: {"rashifala":[{"rashi":"Mesha","do":"...","dont":"..."}, ... ସବୁ 12ଟି]}"""
 
 
 def few_shot_examples():
@@ -143,16 +146,21 @@ def validate(items):
         problems.append(f"expected 12 rashis, got {len(items)}")
     seen = set()
     for it in items:
-        r, t = it.get("rashi", "?"), it.get("text", "")
+        r = it.get("rashi", "?")
         seen.add(r)
-        odia_chars = len(ODIA_RANGE.findall(t))
-        if odia_chars < len(t) * 0.5:
-            problems.append(f"{r}: not enough Odia script")
-        if not (60 <= len(t) <= 260):
-            problems.append(f"{r}: length {len(t)} outside 60-260")
-        for pat in FORBIDDEN_PATTERNS:
-            if pat in t:
-                problems.append(f"{r}: forbidden phrase '{pat}'")
+        for field in ("do", "dont"):
+            t = it.get(field, "")
+            if not t:
+                problems.append(f"{r}: missing '{field}'")
+                continue
+            odia_chars = len(ODIA_RANGE.findall(t))
+            if odia_chars < len(t) * 0.5:
+                problems.append(f"{r}: '{field}' not enough Odia script")
+            if not (30 <= len(t) <= 140):
+                problems.append(f"{r}: '{field}' length {len(t)} outside 30-140")
+            for pat in FORBIDDEN_PATTERNS:
+                if pat in t:
+                    problems.append(f"{r}: '{field}' forbidden phrase '{pat}'")
     missing = set(LUCKY) - seen
     if missing:
         problems.append(f"missing rashis: {missing}")
@@ -160,13 +168,14 @@ def validate(items):
 
 
 PROOFREAD_PROMPT = """ତୁମେ ଜଣେ ଅତି ଯତ୍ନବାନ ଓଡ଼ିଆ ପ୍ରୁଫ୍‌ରିଡର୍, ପାରମ୍ପରିକ ଜ୍ୟୋତିଷ/ପଞ୍ଜିକା ଲେଖାରେ ବିଶେଷଜ୍ଞ।
-ନିମ୍ନଲିଖିତ ୧୨ଟି ରାଶିଫଳ ବାକ୍ୟ ଯାଞ୍ଚ କର:
+ନିମ୍ନଲିଖିତ ୧୨ଟି ରାଶିର "do" ଓ "dont" ବାକ୍ୟ ଯାଞ୍ଚ କର:
 - ବନାନ ଭୁଲ, ଅଣ-ଓଡ଼ିଆ/ହିନ୍ଦୀ ମିଶ୍ରଣ, କିମ୍ବା ଅସ୍ୱାଭାବିକ ବାକ୍ୟ ଥିଲେ ସୁଧାର।
 - ଅତ୍ୟଧିକ ସଂସ୍କୃତ-ମିଶ୍ରିତ, ପୁସ୍ତକୀୟ, ଯାନ୍ତ୍ରିକ କିମ୍ବା ଆକ୍ଷରିକ-ଅନୁବାଦ ପରି ଲାଗୁଥିବା ଶବ୍ଦ/ବାକ୍ୟକୁ ଆଧୁନିକ ଖବରକାଗଜ-ମାନର ସହଜ ଓଡ଼ିଆରେ ବଦଳାଅ (ଉଦାହରଣ: "କାର୍ଯ୍ୟ"→"କାର୍ଯ୍ୟକ୍ଷେତ୍ର", "ପ୍ରେମ"→"ପ୍ରେମଜୀବନ", "ଫଳପ୍ରାପ୍ତିର ସମ୍ଭାବନା"→"ଫଳ ମିଳିବାର ସମ୍ଭାବନା")।
+- ଉଭୟ ବାକ୍ୟ ପୂର୍ଣ୍ଣ, ସମ୍ପୂର୍ଣ୍ଣ ମନେ ହେବା ଉଚିତ୍ — ଛୋଟ ଖଣ୍ଡବାକ୍ୟାଂଶ ନୁହେଁ।
 - ଏକ ଅଭିଜ୍ଞ ଟିଭି ଜ୍ୟୋତିଷୀ କହୁଥିବା ପରି ସ୍ୱାଭାବିକ, ପ୍ରବାହମୟ ଶୁଣାଯିବା ଉଚିତ୍ — AI-ଅନୁବାଦିତ ପରି ନୁହେଁ।
 - ଅର୍ଥ ଓ ଶୈଳୀ ଅପରିବର୍ତ୍ତିତ ରଖ, କେବଳ ଭାଷାଗତ ତ୍ରୁଟି ସୁଧାର।
 - କୌଣସି ତ୍ରୁଟି ନ ଥିଲେ ସେହିପରି ଫେରାଅ।
-- କେବଳ JSON ଫେରାଅ: {"rashifala":[{"rashi":"...","text":"..."}, ...ସବୁ ୧୨ଟି], "had_corrections": true/false}
+- କେବଳ JSON ଫେରାଅ: {"rashifala":[{"rashi":"...","do":"...","dont":"..."}, ...ସବୁ ୧୨ଟି], "had_corrections": true/false}
 
 ଯାଞ୍ଚ କରିବାକୁ ଥିବା ବିଷୟବସ୍ତୁ:
 """
@@ -176,7 +185,7 @@ def proofread_pass(items):
     """Second, independent Gemini call acting as a native-style proofreader —
     this substitutes for daily human review, which isn't available here."""
     payload = json.dumps({"rashifala": [
-        {"rashi": it["rashi"], "text": it["text"]} for it in items
+        {"rashi": it["rashi"], "do": it["do"], "dont": it["dont"]} for it in items
     ]}, ensure_ascii=False)
     raw = call_gemini(PROOFREAD_PROMPT + payload)
     try:
@@ -194,10 +203,12 @@ def lexicon_gate(items, max_unknown_rate=0.06):
     Odia vocabulary — automated substitute for a native reviewer's eye."""
     problems = []
     for it in items:
-        rate = lex.unknown_rate(it["text"])
-        if rate > max_unknown_rate:
-            unk = lex.unknown_words(it["text"])
-            problems.append(f"{it['rashi']}: unknown-word rate {rate:.0%} ({unk})")
+        for field in ("do", "dont"):
+            text = it.get(field, "")
+            rate = lex.unknown_rate(text)
+            if rate > max_unknown_rate:
+                unk = lex.unknown_words(text)
+                problems.append(f"{it['rashi']} ({field}): unknown-word rate {rate:.0%} ({unk})")
     return problems
 
 

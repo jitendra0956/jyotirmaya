@@ -158,6 +158,65 @@ def render_rashi_card(p, ctx, item, out, date):
     img = img.resize((1080, 1080), Image.LANCZOS)
     img.save(out, quality=95)
 
+
+def render_do_dont_grid_page(items, out, page_type, page_num, total_pages, date, weekday_odia):
+    """Condensed Do/Dont grid — replaces the old one-card-per-rashi design.
+    6 rashis per page, single column, generous per-item space (confirmed
+    legible via direct visual testing before being wired in here).
+    items: list of {"rashi_odia": "...", "do"/"dont": "..."} for exactly
+    the 6 rashis on this page.
+    page_type: "do" or "dont" — controls header text and accent color.
+    """
+    img, d = base_canvas(GOLD)
+    reg, bold, black = "NotoSansOriya-Regular.ttf", "NotoSansOriya-Bold.ttf", "NotoSansOriya-Black.ttf"
+
+    if page_type == "do":
+        hdr = "ଆଜିର କରଣୀୟ"
+        accent = GOLD_LIGHT
+    else:
+        hdr = "ଆଜିର ଅକରଣୀୟ"
+        accent = (212, 148, 128)  # warm muted red-ish, distinct from Do's gold
+
+    f = F(bold, 34)
+    w = d.textlength(hdr, font=f)
+    d.text(((SIZE - w) / 2, 60 * S), hdr, font=f, fill=GOLD)
+
+    sub = date_odia(date) + " · " + weekday_odia + f"  ·  ଭାଗ {page_num}/{total_pages}"
+    f2 = F(reg, 22)
+    w = d.textlength(sub, font=f2)
+    d.text(((SIZE - w) / 2, 118 * S), sub, font=f2, fill=MUTED)
+
+    card_w = 900 * S
+    x = (SIZE - card_w) // 2
+    row_h = 150 * S
+    start_y = 190 * S
+    f_name = F(black, 38)
+    f_text = F(reg, 28)
+
+    for i, item in enumerate(items):
+        y = start_y + i * row_h
+        cell_h = row_h - 18 * S
+        d.rounded_rectangle([x, y, x + card_w, y + cell_h], radius=16 * S, fill=BG2, outline=GOLD, width=1 * S)
+        rashi_name = item["rashi_odia"]
+        d.text((x + 28 * S, y + 18 * S), rashi_name, font=f_name, fill=accent)
+
+        text = item.get(page_type, "")
+        name_w = d.textlength(rashi_name, font=f_name)
+        tx = x + 28 * S + name_w + 30 * S
+        max_w = card_w - (28 * S + name_w + 30 * S) - 20 * S
+        lines = wrap(d, text, f_text, max_w)
+        line_h = 36 * S
+        ty = y + (cell_h - len(lines) * line_h) / 2
+        for ln in lines[:3]:  # 3-line cap — matches what was confirmed to
+                              # fit legibly during prototype testing
+            d.text((tx, ty), ln, font=f_text, fill=TEXT)
+            ty += line_h
+
+    draw_footer(d)
+    img = img.resize((1080, 1080), Image.LANCZOS)
+    img.save(out, quality=95)
+    return out
+
 def _planet_badge(d, cx, cy, r, theme):
     """Small badge showing today's weekday planetary ruler (day-lord)."""
     accent, glow = theme["accent"], theme["glow"]
@@ -396,25 +455,27 @@ if __name__ == "__main__":
     import festival_greeting as fg
     fg.render_greeting_slide(date, date_odia(date), os.path.join(outdir, "festival_greeting.png"))
 
-    # Use the SAME fixed canonical order as publish/instagram.py's RASHI_SLUGS
-    # grouping (not Gemini's JSON order) — guarantees the cover's "included in
-    # this post" list always matches which rashi files actually end up in
-    # each Instagram post, regardless of what order the model returned them in.
+    # Single cover (no more Part1/Part2 split — the whole post is now only
+    # ~6 images: logo + 2 Do's pages + 2 Dont's pages + optional festival
+    # greeting, comfortably under Instagram's 10-item carousel limit)
+    render_cover(p, os.path.join(outdir, "cover.png"), date, rashi_names=None)
+
+    # Do/Dont grid — 2 pages each, 6 rashis per page, in the SAME fixed
+    # canonical order used everywhere else in this codebase
     rashi_order = pj.RASHI_NAMES
-    mid = (len(rashi_order) + 1) // 2  # matches publish/instagram.py split exactly
-    part1_names = [ctxs[r]["rashi_odia"] for r in rashi_order[:mid]]
-    part2_names = [ctxs[r]["rashi_odia"] for r in rashi_order[mid:]]
-
-    render_cover(p, os.path.join(outdir, "cover_part1.png"), date,
-                part_label="ଭାଗ ୧", rashi_names=part1_names)
-    render_cover(p, os.path.join(outdir, "cover_part2.png"), date,
-                part_label="ଭାଗ ୨", rashi_names=part2_names)
-    print("covers: part1 ->", part1_names, "| part2 ->", part2_names)
-
+    mid = (len(rashi_order) + 1) // 2
     items_by_rashi = {item["rashi"]: item for item in content["rashifala"]}
-    for i, rashi_name in enumerate(pj.RASHI_NAMES, start=2):
-        item = items_by_rashi[rashi_name]
-        render_rashi_card(p, ctxs[rashi_name], item, os.path.join(outdir, f"{i:02d}_{rashi_name.lower()}.png"), date)
+
+    for page_type, prefix in [("do", "01_do"), ("dont", "03_dont")]:
+        for page_num, rashi_slice in enumerate([rashi_order[:mid], rashi_order[mid:]], start=1):
+            page_items = [
+                {"rashi_odia": ctxs[r]["rashi_odia"], page_type: items_by_rashi[r][page_type]}
+                for r in rashi_slice
+            ]
+            out_path = os.path.join(outdir, f"{prefix}_page{page_num}.png")
+            render_do_dont_grid_page(page_items, out_path, page_type, page_num, 2, date, p["weekday_odia"])
+            print(f"rendered {page_type} page {page_num}: {[i['rashi_odia'] for i in page_items]}")
+
     print("rendered:", sorted(os.listdir(outdir)))
 
 

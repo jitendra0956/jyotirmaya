@@ -5,24 +5,18 @@ permissions:
 
 on:
   schedule:
-    # 5:30 AM IST (00:00 UTC) — generate + render + publish Part 1 directly
+    # 5:30 AM IST (00:00 UTC) — generate, render, and publish, all in one run.
+    # No more Part 1/Part 2 split: the new Do/Dont grid design only needs
+    # ~6 images total (cover + 2 Do's pages + 2 Dont's pages + optional
+    # festival greeting), comfortably under Instagram's 10-item carousel
+    # limit, so it's one single post now, not two.
     - cron: "0 0 * * *"
-    # 6:00 AM IST (00:30 UTC) — publish Part 2 only, 30 min later, separate
-    # run — preserves the proven spacing that helps avoid Meta's
-    # Development-Mode rate limiting, reuses content committed by the
-    # 5:30 AM run rather than regenerating (would risk inconsistent
-    # content between the two halves of the same day's post)
-    - cron: "30 0 * * *"
   workflow_dispatch:
     inputs:
       date:
         description: "Date to use, YYYY-MM-DD (leave empty for today)"
         required: false
         default: ""
-      part:
-        description: "1, 2, or both — use 1/2 only to recover a partial publish failure without duplicating the other half"
-        required: false
-        default: "both"
 
 jobs:
   daily:
@@ -36,21 +30,9 @@ jobs:
 
       - run: pip install pyswisseph pillow
 
-      - name: Determine part and date
+      - name: Determine date
         id: vars
         run: |
-          SCHEDULE="${{ github.event.schedule }}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            PART="${{ github.event.inputs.part }}"
-          elif [ "$SCHEDULE" = "0 0 * * *" ]; then
-            PART="1"
-          elif [ "$SCHEDULE" = "30 0 * * *" ]; then
-            PART="2"
-          else
-            PART="both"
-          fi
-          echo "part=$PART" >> "$GITHUB_OUTPUT"
-
           MANUAL_DATE="${{ github.event.inputs.date }}"
           if [ -n "$MANUAL_DATE" ]; then
             echo "date=$MANUAL_DATE" >> "$GITHUB_OUTPUT"
@@ -58,22 +40,12 @@ jobs:
             echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate content + render cards (Part 1 run only — Part 2 reuses this)
-        if: steps.vars.outputs.part == '1' || steps.vars.outputs.part == 'both'
+      - name: Generate content + render cards
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           python engine/interpret.py ${{ steps.vars.outputs.date }}
           python render/cards.py ${{ steps.vars.outputs.date }}
-
-      - name: Commit rendered cards (so the Part 2 run 30 min later can find them)
-        if: steps.vars.outputs.part == '1' || steps.vars.outputs.part == 'both'
-        run: |
-          git config user.name "jyotirmaya-bot"
-          git config user.email "bot@jyotirmaya"
-          git add output/
-          git commit -m "cards for ${{ steps.vars.outputs.date }}" || echo "nothing to commit"
-          git push
 
       - name: Publish to Instagram
         env:
@@ -82,7 +54,7 @@ jobs:
           CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
           CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-        run: python publish/instagram.py ${{ steps.vars.outputs.date }} ${{ steps.vars.outputs.part }}
+        run: python publish/instagram.py ${{ steps.vars.outputs.date }}
 
       - name: Notify on success
         if: success()
@@ -91,7 +63,7 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -F chat_id=$TG_CHAT_ID \
-            -F text="✅ Jyotirmaya published for ${{ steps.vars.outputs.date }} (part ${{ steps.vars.outputs.part }})" \
+            -F text="✅ Jyotirmaya published for ${{ steps.vars.outputs.date }}" \
             https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage
 
       - name: Alert on failure
@@ -101,5 +73,5 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -F chat_id=$TG_CHAT_ID \
-            -F text="⚠️ Jyotirmaya pipeline FAILED (part ${{ steps.vars.outputs.part }}). Post manually today!" \
+            -F text="⚠️ Jyotirmaya pipeline FAILED. Post manually today!" \
             https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage
