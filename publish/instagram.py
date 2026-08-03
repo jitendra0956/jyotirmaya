@@ -1,15 +1,82 @@
 """
 Jyotirmaya — Instagram carousel publisher via Graph API.
-Requires env: IG_USER_ID, IG_ACCESS_TOKEN (long-lived), IMAGE_BASE_URL
-Images must be publicly hosted (GitHub Pages) before publishing.
+Images are uploaded to Cloudinary (not GitHub Pages/IMAGE_BASE_URL
+anymore) — the same migration Songs & Quotes needed when its repo went
+private, since GitHub Pages requires a public repo (or paid plan) to
+serve files. If Jyotirmaya's repo is also private, IMAGE_BASE_URL would
+never have actually served anything, which is a very plausible real cause
+of "the workflow succeeds but nothing posts."
+Requires env: IG_USER_ID, IG_ACCESS_TOKEN (long-lived), CLOUDINARY_CLOUD_NAME,
+CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.
 Instagram carousels allow max 10 items, so 13 slides (cover + 12 rashis)
 are split into two posts, cover leading part 1. Each carousel container
 is polled until Instagram finishes processing before publish is called.
 """
-import json, os, sys, time, urllib.request, urllib.error, urllib.parse
+import hashlib, json, os, sys, time, urllib.request, urllib.error, urllib.parse
 
 GRAPH = "https://graph.instagram.com/v21.0"
 MAX_CAROUSEL = 10
+
+
+def _cloudinary_signature(params: dict, api_secret: str) -> str:
+    """SHA-1 (Cloudinary's actual default, not SHA-256 — verified against
+    Cloudinary's own documented worked example during the Songs & Quotes
+    build)."""
+    sorted_params = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    return hashlib.sha1((sorted_params + api_secret).encode()).hexdigest()
+
+
+def upload_to_cloudinary(local_image_path: str, public_id: str = None) -> str:
+    """Upload a local image file to Cloudinary. Returns the secure_url.
+    overwrite=true + invalidate=true so re-runs for the same date/part
+    correctly replace the asset and bust CDN cache, rather than silently
+    serving a stale previous attempt."""
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME", "").strip()
+    api_key = os.environ.get("CLOUDINARY_API_KEY", "").strip()
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET", "").strip()
+    if not all([cloud_name, api_key, api_secret]):
+        missing = [k for k, v in {
+            "CLOUDINARY_CLOUD_NAME": cloud_name, "CLOUDINARY_API_KEY": api_key,
+            "CLOUDINARY_API_SECRET": api_secret}.items() if not v]
+        raise RuntimeError(f"Missing Cloudinary credentials: {missing}")
+
+    timestamp = str(int(time.time()))
+    params_to_sign = {"timestamp": timestamp, "overwrite": "true", "invalidate": "true"}
+    if public_id:
+        params_to_sign["public_id"] = public_id
+    signature = _cloudinary_signature(params_to_sign, api_secret)
+
+    fields = {"api_key": api_key, "timestamp": timestamp, "signature": signature,
+              "overwrite": "true", "invalidate": "true"}
+    if public_id:
+        fields["public_id"] = public_id
+
+    boundary = "----jyotirmaya" + timestamp
+    body = b""
+    for key, value in fields.items():
+        body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n").encode()
+    with open(local_image_path, "rb") as f:
+        file_data = f.read()
+    filename = os.path.basename(local_image_path)
+    body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+             f"Content-Type: image/png\r\n\r\n").encode() + file_data + b"\r\n"
+    body += f"--{boundary}--\r\n".encode()
+
+    url = f"https://api.cloudinary.com/v1_1/{cloud_name}/image/upload"
+    req = urllib.request.Request(url, data=body,
+                                 headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            result = json.load(r)
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode(errors="replace")
+        raise RuntimeError(f"Cloudinary upload error {e.code}: {err_body[:500]}") from e
+
+    secure_url = result.get("secure_url")
+    if not secure_url:
+        raise RuntimeError(f"Cloudinary response missing secure_url: {result}")
+    print(f"[cloudinary] uploaded {local_image_path} -> {secure_url}")
+    return secure_url
 
 
 def _post(url, params):
@@ -156,7 +223,6 @@ def _mark_published(outdir, part_num, media_id):
 if __name__ == "__main__":
     dstr = sys.argv[1]
     only_part = sys.argv[2] if len(sys.argv) > 2 else "both"  # "1", "2", or "both"
-    base = os.environ["IMAGE_BASE_URL"].rstrip("/")
     outdir = os.path.join(os.path.dirname(__file__), "..", "output", dstr)
 
     # Explicit whitelist by known rashi slugs — immune to stray leftover
@@ -208,7 +274,11 @@ if __name__ == "__main__":
         if only_part not in ("both", str(idx)):
             print(f"[info] skipping part {idx}/2 (only_part={only_part})")
             continue
-        urls = [f"{base}/{dstr}/{f}" for f in batch]
+        print(f"[debug] uploading {len(batch)} files for part {idx}/2 to Cloudinary...")
+        urls = [
+            upload_to_cloudinary(os.path.join(outdir, f), public_id=f"jyotirmaya/{dstr}/{os.path.splitext(f)[0]}")
+            for f in batch
+        ]
         cap = base_caption + f"\n\n({idx}/2)"
         media_id = publish_one_carousel(urls, cap, ig_user, token)
         ids.append(media_id)

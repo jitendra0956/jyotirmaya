@@ -5,20 +5,18 @@ permissions:
 
 on:
   schedule:
-    # 21:00 IST (15:30 UTC) — generate tomorrow's cards, send for approval
-    - cron: "30 15 * * *"
-    # 05:30 IST (00:00 UTC) — publish Part 1 only
+    # 5:30 AM IST (00:00 UTC) — generate + render + publish Part 1 directly
     - cron: "0 0 * * *"
-    # 06:00 IST (00:30 UTC) — publish Part 2 only, 30 min later, separate run
+    # 6:00 AM IST (00:30 UTC) — publish Part 2 only, 30 min later, separate
+    # run — preserves the proven spacing that helps avoid Meta's
+    # Development-Mode rate limiting, reuses content committed by the
+    # 5:30 AM run rather than regenerating (would risk inconsistent
+    # content between the two halves of the same day's post)
     - cron: "30 0 * * *"
   workflow_dispatch:
     inputs:
-      mode:
-        description: "generate | publish | exchange_token"
-        required: true
-        default: "generate"
       date:
-        description: "Date to use, YYYY-MM-DD (leave empty for automatic today/tomorrow)"
+        description: "Date to use, YYYY-MM-DD (leave empty for today)"
         required: false
         default: ""
       part:
@@ -38,81 +36,63 @@ jobs:
 
       - run: pip install pyswisseph pillow
 
-      - name: Determine mode, date, and part
-        id: mode
+      - name: Determine part and date
+        id: vars
         run: |
           SCHEDULE="${{ github.event.schedule }}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            MODE="${{ github.event.inputs.mode }}"
             PART="${{ github.event.inputs.part }}"
-          elif [ "$SCHEDULE" = "30 15 * * *" ]; then
-            MODE="generate"
-            PART="both"
           elif [ "$SCHEDULE" = "0 0 * * *" ]; then
-            MODE="publish"
             PART="1"
           elif [ "$SCHEDULE" = "30 0 * * *" ]; then
-            MODE="publish"
             PART="2"
           else
-            MODE="publish"
             PART="both"
           fi
-          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
           echo "part=$PART" >> "$GITHUB_OUTPUT"
 
           MANUAL_DATE="${{ github.event.inputs.date }}"
           if [ -n "$MANUAL_DATE" ]; then
             echo "date=$MANUAL_DATE" >> "$GITHUB_OUTPUT"
-          elif [ "$MODE" = "generate" ]; then
-            echo "date=$(TZ=Asia/Kolkata date -d tomorrow +%F)" >> "$GITHUB_OUTPUT"
           else
             echo "date=$(TZ=Asia/Kolkata date +%F)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Exchange token (manual only)
-        if: steps.mode.outputs.mode == 'exchange_token'
-        env:
-          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
-          IG_APP_SECRET: ${{ secrets.IG_APP_SECRET }}
-        run: python engine/exchange_token.py
-
-      - name: Generate content + render cards
-        if: steps.mode.outputs.mode == 'generate'
+      - name: Generate content + render cards (Part 1 run only — Part 2 reuses this)
+        if: steps.vars.outputs.part == '1' || steps.vars.outputs.part == 'both'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python engine/interpret.py ${{ steps.mode.outputs.date }}
-          python render/cards.py ${{ steps.mode.outputs.date }}
+          python engine/interpret.py ${{ steps.vars.outputs.date }}
+          python render/cards.py ${{ steps.vars.outputs.date }}
 
-      - name: Commit rendered cards (hosts them on GitHub Pages)
-        if: steps.mode.outputs.mode == 'generate'
+      - name: Commit rendered cards (so the Part 2 run 30 min later can find them)
+        if: steps.vars.outputs.part == '1' || steps.vars.outputs.part == 'both'
         run: |
           git config user.name "jyotirmaya-bot"
           git config user.email "bot@jyotirmaya"
           git add output/
-          git commit -m "cards for ${{ steps.mode.outputs.date }}" || echo "nothing to commit"
+          git commit -m "cards for ${{ steps.vars.outputs.date }}" || echo "nothing to commit"
           git push
 
-      - name: Send preview to Telegram (FYI, not a required approval)
-        if: steps.mode.outputs.mode == 'generate'
+      - name: Publish to Instagram
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: python publish/instagram.py ${{ steps.vars.outputs.date }} ${{ steps.vars.outputs.part }}
+
+      - name: Notify on success
+        if: success()
         env:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
-          D=${{ steps.mode.outputs.date }}
           curl -s -F chat_id=$TG_CHAT_ID \
-            -F photo=@output/$D/cover_part1.png \
-            -F caption="Jyotirmaya $D — auto-checked (structure + proofread pass + vocabulary gate). Part 1 publishes 5:30 AM, Part 2 at 6:00 AM." \
-            https://api.telegram.org/bot$TG_BOT_TOKEN/sendPhoto
-
-      - name: Publish to Instagram
-        if: steps.mode.outputs.mode == 'publish'
-        env:
-          IG_USER_ID: ${{ secrets.IG_USER_ID }}
-          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
-          IMAGE_BASE_URL: ${{ secrets.IMAGE_BASE_URL }}
-        run: python publish/instagram.py ${{ steps.mode.outputs.date }} ${{ steps.mode.outputs.part }}
+            -F text="✅ Jyotirmaya published for ${{ steps.vars.outputs.date }} (part ${{ steps.vars.outputs.part }})" \
+            https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage
 
       - name: Alert on failure
         if: failure()
@@ -121,5 +101,5 @@ jobs:
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -F chat_id=$TG_CHAT_ID \
-            -F text="⚠️ Jyotirmaya pipeline FAILED (${{ steps.mode.outputs.mode }} part ${{ steps.mode.outputs.part }}). Post manually today!" \
+            -F text="⚠️ Jyotirmaya pipeline FAILED (part ${{ steps.vars.outputs.part }}). Post manually today!" \
             https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage
