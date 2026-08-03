@@ -10,8 +10,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 import panchanga as pj
 import odia_lexicon as lex
 
-MODEL = "gemini-2.5-flash"
-API = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
+MODEL = "gemini-3.5-flash"  # was gemini-2.5-flash — deprecated, "no longer
+                             # available to new users" (same issue found
+                             # and fixed for Songs & Quotes earlier)
+FALLBACK_MODEL = "gemini-3.5-flash-lite"
+API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 LUCKY = {  # deterministic per rashi lord — code decides, not the LLM
     "Mesha":   ("ଲାଲ", "୯"),    "Vrishabha": ("ଧଳା", "୬"),
@@ -68,6 +71,11 @@ def build_prompt(p, contexts):
 
 
 def call_gemini(prompt, retries=4):
+    """Same proven retry/backoff/fallback logic as Songs & Quotes/
+    Kurukshetra's gemini_client.py — this function predated that pattern
+    and only handled 429, not 503 or connection timeouts, which is what
+    caused a real production failure (503 'high demand' propagating
+    immediately with zero retry)."""
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise RuntimeError("GEMINI_API_KEY not set")
@@ -75,22 +83,55 @@ def call_gemini(prompt, retries=4):
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"temperature": 0.8, "responseMimeType": "application/json"},
     }).encode()
-    req = urllib.request.Request(f"{API}?key={key}", data=body,
-                                 headers={"Content-Type": "application/json"})
-    for attempt in range(retries):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as r:
-                out = json.load(r)
-            return out["candidates"][0]["content"]["parts"][0]["text"]
-        except urllib.error.HTTPError as e:
-            err_body = e.read().decode(errors="replace")
-            if e.code == 429 and attempt < retries - 1:
-                wait = 15 * (attempt + 1)  # 15s, 30s, 45s...
-                print(f"429 rate limited, retrying in {wait}s... ({err_body[:300]})")
-                time.sleep(wait)
-                continue
-            raise RuntimeError(f"Gemini API error {e.code}: {err_body[:500]}") from e
-    raise RuntimeError("Gemini API: exhausted retries on 429")
+
+    def _attempt(model, max_retries):
+        url = API_BASE.format(model=model) + f"?key={key}"
+        req = urllib.request.Request(url, data=body,
+                                     headers={"Content-Type": "application/json"})
+        for attempt in range(max_retries):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    out = json.load(r)
+                return out["candidates"][0]["content"]["parts"][0]["text"]
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode(errors="replace")
+
+                if e.code in (401, 403):
+                    raise RuntimeError(f"Gemini auth error {e.code} — check GEMINI_API_KEY: {err_body[:300]}") from e
+
+                if e.code == 429 and attempt < max_retries - 1:
+                    wait = 15 * (attempt + 1)
+                    print(f"[gemini] 429 rate limit on {model}, retry {attempt+1}/{max_retries-1} in {wait}s")
+                    time.sleep(wait)
+                    continue
+
+                if e.code == 503 and attempt < max_retries - 1:
+                    wait = 5 * (2 ** attempt)  # 5s, 10s, 20s
+                    print(f"[gemini] 503 high demand on {model}, retry {attempt+1}/{max_retries-1} in {wait}s")
+                    time.sleep(wait)
+                    continue
+
+                raise RuntimeError(f"Gemini API error {e.code} on {model}: {err_body[:500]}") from e
+
+            except (TimeoutError, urllib.error.URLError, ConnectionError) as e:
+                if attempt < max_retries - 1:
+                    wait = 5 * (2 ** attempt)
+                    print(f"[gemini] connection timeout on {model} ({type(e).__name__}), "
+                          f"retry {attempt+1}/{max_retries-1} in {wait}s")
+                    time.sleep(wait)
+                    continue
+                raise RuntimeError(f"Gemini timeout on {model} after {max_retries} attempts: {e}") from e
+
+        raise RuntimeError(f"Gemini exhausted {max_retries} retries on {model}")
+
+    try:
+        return _attempt(MODEL, retries)
+    except RuntimeError as primary_err:
+        err_lower = str(primary_err).lower()
+        if any(s in err_lower for s in ("503", "exhausted", "timeout", "429", "quota", "resource_exhausted")):
+            print(f"[gemini] primary model {MODEL!r} unavailable — trying fallback {FALLBACK_MODEL!r}")
+            return _attempt(FALLBACK_MODEL, 3)
+        raise
 
 
 ODIA_RANGE = re.compile(r"[\u0B00-\u0B7F]")
