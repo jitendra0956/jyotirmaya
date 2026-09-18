@@ -1,9 +1,9 @@
 {
-  "note": "Hand-curated few-shot style examples for the Gemini prompt. Kept separate from any single day's content so this can be maintained/upgraded independently as style guidance improves. Update this file (not a content_<date>.json) when refining word-choice rules. Updated for the Do/Dont schema (full, complete phrases, not fragments).",
+  "note": "Hand-curated few-shot style examples for the Gemini prompt. Kept separate from any single day's content so this can be maintained/upgraded independently as style guidance improves. Update this file (not a content_<date>.json) when refining word-choice rules. Updated for the love/money/health/work schema (short but complete phrases, not fragments) -- replaces the earlier do/dont schema, itself a replacement for the original single-paragraph 'text' schema.",
   "rashifala": [
-    {"rashi": "Mesha", "do": "ନୂଆ କାର୍ଯ୍ୟ ଆରମ୍ଭ କରିବା ପାଇଁ ଆଜି ଉତ୍ତମ ଦିନ, ସାହସର ସହ ଆଗକୁ ବଢ଼ନ୍ତୁ।", "dont": "ଅନାବଶ୍ୟକ ବିବାଦରେ ପଡ଼ିବାକୁ ଆଜି ଏଡ଼ାନ୍ତୁ, ଧୈର୍ଯ୍ୟ ବଜାୟ ରଖନ୍ତୁ।"},
-    {"rashi": "Vrishabha", "do": "ପରିବାର ସହ ସମୟ ବିତାନ୍ତୁ, ପୁରୁଣା ସମ୍ପର୍କକୁ ମଜବୁତ କରିବାର ଆଜି ସୁଯୋଗ ଅଛି।", "dont": "ଆଜି ବଡ଼ ଆର୍ଥିକ ନିଷ୍ପତ୍ତି ନେବା ପୂର୍ବରୁ ଭଲ ଭାବେ ଚିନ୍ତା କରନ୍ତୁ।"},
-    {"rashi": "Mithuna", "do": "ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ ବାର୍ତ୍ତା କିମ୍ବା ଚୁକ୍ତି ଆଜି ପଠାନ୍ତୁ, ଯୋଗାଯୋଗ ଶୁଭ ରହିବ।", "dont": "ଅନାବଶ୍ୟକ ଖର୍ଚ୍ଚରୁ ଆଜି ଦୂରେଇ ରୁହନ୍ତୁ।"},
-    {"rashi": "Karkata", "do": "ଅର୍ଥ ସଞ୍ଚୟ ଉପରେ ଧ୍ୟାନ ଦିଅନ୍ତୁ, ପୁରୁଣା ଆୟର ପଥ ପୁଣି ଖୋଲିପାରେ।", "dont": "ଆଜି ପୁରୁଣା ମତଭେଦକୁ ପୁନଃ ଉଠାଇବାକୁ ଏଡ଼ାନ୍ତୁ।"}
+    {"rashi": "Mesha", "love": "ପ୍ରେମଜୀବନରେ ଆଜି ମଧୁର ମୁହୂର୍ତ୍ତ ଆସିପାରେ।", "money": "ଅନାବଶ୍ୟକ ଖର୍ଚ୍ଚରୁ ଆଜି ଦୂରେଇ ରୁହନ୍ତୁ।", "health": "ସ୍ୱାସ୍ଥ୍ୟ ପ୍ରତି ଧ୍ୟାନ ଦିଅନ୍ତୁ, ବିଶ୍ରାମ ଆବଶ୍ୟକ।", "work": "ନୂଆ କାର୍ଯ୍ୟ ଆରମ୍ଭ କରିବା ପାଇଁ ଆଜି ଉତ୍ତମ ଦିନ।"},
+    {"rashi": "Vrishabha", "love": "ପୁରୁଣା ସମ୍ପର୍କରେ ଆଜି ମିଠାପଣ ଫେରିପାରେ।", "money": "ବଡ଼ ଆର୍ଥିକ ନିଷ୍ପତ୍ତି ପୂର୍ବରୁ ଭଲ ଭାବେ ଚିନ୍ତା କରନ୍ତୁ।", "health": "ଆଜି ଶରୀରର ଆରାମ ପ୍ରତି ଧ୍ୟାନ ଦିଅନ୍ତୁ।", "work": "ପରିବାର ସହ ସମୟ ବିତାଇବାର ଆଜି ସୁଯୋଗ ଅଛି।"},
+    {"rashi": "Mithuna", "love": "ସାଥୀଙ୍କ ସହ ଖୋଲାମେଳା କଥାବାର୍ତ୍ତା ଆଜି ଲାଭଦାୟକ ହେବ।", "money": "ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ ଚୁକ୍ତି ଆଜି ପଠାନ୍ତୁ, ଯୋଗାଯୋଗ ଶୁଭ ରହିବ।", "health": "ମାନସିକ ଚାପ କମାଇବା ପାଇଁ ସମୟ ବାହାର କରନ୍ତୁ।", "work": "ସହକର୍ମୀଙ୍କ ସହ ଯୋଗାଯୋଗ ଆଜି ଫଳପ୍ରଦ ହେବ।"},
+    {"rashi": "Karkata", "love": "ପରିବାର ସହ ଭାବନାତ୍ମକ ସମ୍ପର୍କ ଆଜି ଗାଢ଼ ହେବ।", "money": "ପୁରୁଣା ଆୟର ପଥ ପୁଣି ଖୋଲିପାରେ, ଧ୍ୟାନ ଦିଅନ୍ତୁ।", "health": "ଆଜି ପର୍ଯ୍ୟାପ୍ତ ନିଦ୍ରା ଉପରେ ଧ୍ୟାନ ଦିଅନ୍ତୁ।", "work": "ପୁରୁଣା ମତଭେଦ ପୁନଃ ଉଠାଇବାକୁ ଆଜି ଏଡ଼ାନ୍ତୁ।"}
   ]
 }
