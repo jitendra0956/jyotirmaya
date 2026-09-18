@@ -6,10 +6,8 @@ permissions:
 on:
   schedule:
     # 5:30 AM IST (00:00 UTC) — generate, render, and publish, all in one run.
-    # No more Part 1/Part 2 split: the new Do/Dont grid design only needs
-    # ~6 images total (cover + 2 Do's pages + 2 Dont's pages + optional
-    # festival greeting), comfortably under Instagram's 10-item carousel
-    # limit, so it's one single post now, not two.
+    # Single standalone image post now (all 12 rashis in one dense grid) —
+    # no carousel at all anymore, not even a single-carousel one.
     - cron: "0 0 * * *"
   workflow_dispatch:
     inputs:

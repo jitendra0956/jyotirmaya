@@ -120,6 +120,20 @@ def _wait_until_ready(container_id, token, timeout=90, poll_interval=10):
     raise RuntimeError(f"Container {container_id} not ready after {timeout}s")
 
 
+def publish_single_image(image_url, caption, ig_user, token):
+    """Publish ONE standalone image post (not a carousel) -- no `children`,
+    no `media_type: CAROUSEL`, just a normal media container. Simpler
+    than publish_one_carousel because there's nothing to collect first."""
+    container = _post(f"{GRAPH}/{ig_user}/media", {
+        "image_url": image_url, "caption": caption, "access_token": token})
+
+    _wait_until_ready(container["id"], token)
+
+    published = _post(f"{GRAPH}/{ig_user}/media_publish", {
+        "creation_id": container["id"], "access_token": token})
+    return published["id"]
+
+
 def publish_one_carousel(image_urls, caption, ig_user, token):
     """Publish a single carousel (must be 2-10 items). Returns published media id."""
     children = []
@@ -224,23 +238,16 @@ if __name__ == "__main__":
     outdir = os.path.join(os.path.dirname(__file__), "..", "output", dstr)
     all_files = os.listdir(outdir)
 
-    # Explicit expected file list for the new Do/Dont grid design — one
-    # single carousel now (only ~6 images, well under Instagram's 10-item
-    # limit), no more Part1/Part2 split needed.
-    expected = ["cover.png", "01_do_page1.png", "01_do_page2.png",
-                "03_dont_page1.png", "03_dont_page2.png"]
-    missing = [f for f in expected if f not in all_files]
-    if missing:
-        raise RuntimeError(f"expected files missing from {outdir}: {missing}")
+    # One single image now, not a carousel of expected parts. cards.py's
+    # render_daily_grid() always writes exactly this file.
+    grid_file = "daily_grid.png"
+    if grid_file not in all_files:
+        raise RuntimeError(f"expected {grid_file} not found in {outdir} -- "
+                            f"did render/cards.py run successfully first?")
 
-    batch = list(expected)
-    if "festival_greeting.png" in all_files:
-        batch = ["festival_greeting.png"] + batch
-        print("[info] festival greeting slide included at front")
-
-    stray = [f for f in all_files if f.endswith(".png") and f not in batch and not f.startswith("00_")]
+    stray = [f for f in all_files if f.endswith(".png") and f != grid_file]
     if stray:
-        print(f"[warn] ignoring stray files not part of the expected set: {stray}")
+        print(f"[info] ignoring old/stray files not part of the current single-image flow: {stray}")
 
     ig_user = os.environ["IG_USER_ID"].strip()
     token = os.environ["IG_ACCESS_TOKEN"].strip()
@@ -248,7 +255,18 @@ if __name__ == "__main__":
     print(f"[debug] token length={len(token)}, starts='{token[:6]}...', "
           f"ends='...{token[-4:]}'")
 
-    base_caption = caption_for(dstr, "")
+    weekday_odia = ""
+    content_path = os.path.join(os.path.dirname(__file__), "..", "output", f"content_{dstr}.json")
+    if os.path.exists(content_path):
+        try:
+            import datetime as _dt
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "engine"))
+            import panchanga as _pj
+            weekday_odia = _pj.compute_panchanga(_dt.date.fromisoformat(dstr))["weekday_odia"]
+        except Exception as e:
+            print(f"[warn] could not compute weekday for caption ({e}) -- leaving it blank")
+
+    base_caption = caption_for(dstr, weekday_odia)
     already = _load_published(outdir)
     if already.get("1", {}).get("published"):
         print("[info] already published per local marker — skipping")
@@ -258,11 +276,8 @@ if __name__ == "__main__":
         _mark_published(outdir, 1, "found_via_ground_truth_check")
         sys.exit(0)
 
-    print(f"[debug] uploading {len(batch)} files to Cloudinary...")
-    urls = [
-        upload_to_cloudinary(os.path.join(outdir, f), public_id=f"jyotirmaya/{dstr}/{os.path.splitext(f)[0]}")
-        for f in batch
-    ]
-    media_id = publish_one_carousel(urls, base_caption, ig_user, token)
+    print(f"[debug] uploading {grid_file} to Cloudinary...")
+    url = upload_to_cloudinary(os.path.join(outdir, grid_file), public_id=f"jyotirmaya/{dstr}/daily_grid")
+    media_id = publish_single_image(url, base_caption, ig_user, token)
     print(f"[debug] published: {media_id}")
     _mark_published(outdir, 1, media_id)

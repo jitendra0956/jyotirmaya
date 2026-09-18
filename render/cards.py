@@ -442,44 +442,6 @@ def render_logo(out):
     d.text((cx - (bb[2]-bb[0])/2 - bb[0], cy - (bb[3]-bb[1])/2 - bb[1]), t, font=f, fill=GOLD_LIGHT)
     img.save(out, quality=95)
 
-if __name__ == "__main__":
-    dstr = sys.argv[1] if len(sys.argv) > 1 else "2026-07-12"
-    date = datetime.date.fromisoformat(dstr)
-    p = pj.compute_panchanga(date)
-    ctxs = {c["rashi"]: c for c in pj.rashi_context(p)}
-    here = os.path.dirname(__file__)
-    content = json.load(open(os.path.join(here, "..", "output", f"content_{dstr}.json")))
-    outdir = os.path.join(here, "..", "output", dstr)
-    os.makedirs(outdir, exist_ok=True)
-    render_logo(os.path.join(outdir, "00_logo.png"))
-
-    import festival_greeting as fg
-    fg.render_greeting_slide(date, date_odia(date), os.path.join(outdir, "festival_greeting.png"))
-
-    # Single cover (no more Part1/Part2 split — the whole post is now only
-    # ~6 images: logo + 2 Do's pages + 2 Dont's pages + optional festival
-    # greeting, comfortably under Instagram's 10-item carousel limit)
-    render_cover(p, os.path.join(outdir, "cover.png"), date, rashi_names=None)
-
-    # Do/Dont grid — 2 pages each, 6 rashis per page, in the SAME fixed
-    # canonical order used everywhere else in this codebase
-    rashi_order = pj.RASHI_NAMES
-    mid = (len(rashi_order) + 1) // 2
-    items_by_rashi = {item["rashi"]: item for item in content["rashifala"]}
-
-    for page_type, prefix in [("do", "01_do"), ("dont", "03_dont")]:
-        for page_num, rashi_slice in enumerate([rashi_order[:mid], rashi_order[mid:]], start=1):
-            page_items = [
-                {"rashi_odia": ctxs[r]["rashi_odia"], page_type: items_by_rashi[r][page_type]}
-                for r in rashi_slice
-            ]
-            out_path = os.path.join(outdir, f"{prefix}_page{page_num}.png")
-            render_do_dont_grid_page(page_items, out_path, page_type, page_num, 2, date, p["weekday_odia"])
-            print(f"rendered {page_type} page {page_num}: {[i['rashi_odia'] for i in page_items]}")
-
-    print("rendered:", sorted(os.listdir(outdir)))
-
-
 def render_festival_calendar_card(events, start_date, out):
     """Weekly Friday post — upcoming festivals & Vrat for the next 7 days.
     events: list of {date, name_odia, type} from engine/festival_calendar.py.
@@ -693,3 +655,25 @@ def render_daily_grid(content, p, ctxs, out, date):
     img = img.resize((1080, 1350), Image.LANCZOS)
     img.save(out, quality=95)
     return out
+
+
+if __name__ == "__main__":
+    dstr = sys.argv[1] if len(sys.argv) > 1 else "2026-07-12"
+    date = datetime.date.fromisoformat(dstr)
+    p = pj.compute_panchanga(date)
+    ctxs = pj.rashi_context(p)
+    here = os.path.dirname(__file__)
+    content = json.load(open(os.path.join(here, "..", "output", f"content_{dstr}.json")))
+    outdir = os.path.join(here, "..", "output", dstr)
+    os.makedirs(outdir, exist_ok=True)
+
+    if not content.get("date"):
+        content["date"] = dstr
+    if not content.get("header_odia"):
+        content["header_odia"] = "ଆଜିର ରାଶିଫଳ"
+
+    # No more carousel: one dense image, all 12 rashis, this is the ONLY
+    # file publish/instagram.py needs to pick up for the day.
+    out_path = os.path.join(outdir, "daily_grid.png")
+    render_daily_grid(content, p, ctxs, out_path, date)
+    print("rendered:", out_path)
