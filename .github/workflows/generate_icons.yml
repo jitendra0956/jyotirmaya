@@ -1,0 +1,38 @@
+name: jyotirmaya-generate-icons
+
+# One-off, manual-only job. Zodiac icons don't change day to day, so this
+# is never on a schedule -- run it once, review the 12 results, commit.
+# Re-run any time you want to regenerate (delete the specific icon files
+# you're unhappy with first -- the script skips any rashi that already
+# has a file, so it won't waste calls regenerating ones you're keeping).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pyswisseph
+
+      - name: Generate rashi icons
+        env:
+          POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}
+        run: python engine/generate_rashi_icons.py
+
+      - name: Commit generated icons
+        run: |
+          git config user.name "jyotirmaya-bot"
+          git config user.email "bot@jyotirmaya"
+          git add assets/rashi_icons/
+          git diff --staged --quiet || git commit -m "Generate rashi icons"
+          git push
